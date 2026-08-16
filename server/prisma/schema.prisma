@@ -1,0 +1,263 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name     String
+  email    String @unique
+  password String
+
+  role UserRole @default(USER)
+
+  memberships      MessMember[]
+  invitationsSent  Invitation[]
+  meals            Meal[]
+  expensesRecorded Expense[]
+  payments         Payment[]
+  paymentsRecorded Payment[]    @relation("PaymentRecorder")
+  settlements      Settlement[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+model Mess {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  name        String
+  description String?
+  address     String?
+
+  memberships  MessMember[]
+  invitations  Invitation[]
+  meals        Meal[]
+  expenses     Expense[]
+  payments     Payment[]
+  monthlyBills MonthlyBill[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum MessRole {
+  MANAGER
+  MEMBER
+}
+
+model MessMember {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  userId String @db.ObjectId
+  messId String @db.ObjectId
+
+  user User @relation(fields: [userId], references: [id])
+  mess Mess @relation(fields: [messId], references: [id])
+
+  role MessRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, messId])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Invitation {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  messId    String @db.ObjectId
+  invitedBy String @db.ObjectId
+
+  email  String
+  token  String           @unique
+  status InvitationStatus @default(PENDING)
+
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mess    Mess @relation(fields: [messId], references: [id])
+  inviter User @relation(fields: [invitedBy], references: [id])
+
+  @@index([messId])
+  @@index([email])
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+}
+
+model Meal {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  userId String @db.ObjectId
+  messId String @db.ObjectId
+
+  date     DateTime
+  type     MealType
+  quantity Float    @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+  mess Mess @relation(fields: [messId], references: [id])
+
+  @@index([userId])
+  @@index([messId])
+  @@index([date])
+  @@index([messId, date])
+}
+
+enum ExpenseCategory {
+  FOOD
+  RENT
+  ELECTRICITY
+  GAS
+  WATER
+  INTERNET
+  MAINTENANCE
+  MAID_COST
+  OTHER
+}
+
+model Expense {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  messId     String @db.ObjectId
+  recordedBy String @db.ObjectId
+
+  title       String
+  description String?
+  amount      Float
+  category    ExpenseCategory
+  date        DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mess     Mess @relation(fields: [messId], references: [id])
+  recorder User @relation(fields: [recordedBy], references: [id])
+
+  @@index([messId])
+  @@index([recordedBy])
+  @@index([date])
+  @@index([messId, date])
+}
+
+enum PaymentMethod {
+  CASH
+  BANK
+  MOBILE_BANKING
+  OTHER
+}
+
+model Payment {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  messId     String @db.ObjectId
+  userId     String @db.ObjectId
+  recordedBy String @db.ObjectId
+
+  amount Float
+  date   DateTime
+  method PaymentMethod
+  note   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mess     Mess @relation(fields: [messId], references: [id])
+  user     User @relation(fields: [userId], references: [id])
+  recorder User @relation("PaymentRecorder", fields: [recordedBy], references: [id])
+
+  @@index([messId])
+  @@index([userId])
+  @@index([date])
+  @@index([messId, date])
+}
+
+enum BillStatus {
+  DRAFT
+  FINALIZED
+  CLOSED
+}
+
+model MonthlyBill {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  messId String @db.ObjectId
+
+  month Int
+  year  Int
+
+  totalMeals   Float @default(0)
+  totalExpense Float @default(0)
+  mealRate     Float @default(0)
+
+  status BillStatus @default(DRAFT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mess        Mess         @relation(fields: [messId], references: [id])
+  settlements Settlement[]
+
+  @@unique([messId, month, year])
+  @@index([messId])
+  @@index([year, month])
+}
+
+enum SettlementStatus {
+  UNPAID
+  PARTIAL
+  PAID
+}
+
+model Settlement {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  billId String @db.ObjectId
+  userId String @db.ObjectId
+
+  mealCount    Float @default(0)
+  mealCost     Float @default(0)
+  expenseShare Float @default(0)
+
+  totalAmount Float @default(0)
+  paidAmount  Float @default(0)
+  dueAmount   Float @default(0)
+
+  status SettlementStatus @default(UNPAID)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bill MonthlyBill @relation(fields: [billId], references: [id])
+  user User        @relation(fields: [userId], references: [id])
+
+  @@unique([billId, userId])
+  @@index([userId])
+  @@index([billId])
+}
