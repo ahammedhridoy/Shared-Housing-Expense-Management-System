@@ -24,6 +24,8 @@ model User {
   paymentsRecorded Payment[]    @relation("PaymentRecorder")
   settlements      Settlement[]
 
+  refreshTokens RefreshToken[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -260,4 +262,21 @@ model Settlement {
   @@unique([billId, userId])
   @@index([userId])
   @@index([billId])
+}
+
+model RefreshToken {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  userId    String @db.ObjectId
+  tokenHash String @unique
+
+  expiresAt DateTime
+  revokedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([expiresAt])
 }
