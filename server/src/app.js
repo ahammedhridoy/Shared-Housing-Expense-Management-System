@@ -7,6 +7,8 @@ import notFound from "./middlewares/notFound.middleware.js";
 import errorHandler from "./middlewares/error.middleware.js";
 import authRoutes from "./routes/auth.routes.js";
 import messRoutes from "./routes/mess.routes.js";
+import invitationRoutes from "./routes/invitation.routes.js";
+import mealRoutes from "./routes/meal.routes.js";
 
 const app = express();
 
@@ -44,6 +46,8 @@ app.get("/api/v1/health", (req, res) => {
 // Routes
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/mess", messRoutes);
+app.use("/api/v1/invitations", invitationRoutes);
+app.use("/api/v1", mealRoutes);
 
 // 404 handler
 app.use(notFound);

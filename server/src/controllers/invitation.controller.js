@@ -1,5 +1,9 @@
-import { createInvitation } from "../services/invitation.service.js";
+import {
+  createInvitation,
+  acceptInvitation,
+} from "../services/invitation.service.js";
 
+// Create an invitation
 export const createInvitationController = async (req, res, next) => {
   try {
     const { messId } = req.params;
@@ -22,6 +26,34 @@ export const createInvitationController = async (req, res, next) => {
       message: "Invitation created successfully",
       data: {
         invitation,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Accept an invitation
+export const acceptInvitationController = async (req, res, next) => {
+  try {
+    const { token } = req.params;
+
+    if (!token) {
+      const error = new Error("Invitation token is required");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const membership = await acceptInvitation({
+      token,
+      userId: req.user.userId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Invitation accepted successfully",
+      data: {
+        membership,
       },
     });
   } catch (error) {

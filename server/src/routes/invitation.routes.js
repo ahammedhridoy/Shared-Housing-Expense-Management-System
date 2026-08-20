@@ -1,6 +1,9 @@
 import express from "express";
 
-import { createInvitationController } from "../controllers/invitation.controller.js";
+import {
+  acceptInvitationController,
+  createInvitationController,
+} from "../controllers/invitation.controller.js";
 
 import authMiddleware from "../middlewares/auth.middleware.js";
 import { messManagerMiddleware } from "../middlewares/mess.middleware.js";
@@ -13,5 +16,7 @@ router.post(
   messManagerMiddleware,
   createInvitationController,
 );
+
+router.post("/:token/accept", authMiddleware, acceptInvitationController);
 
 export default router;
