@@ -5,6 +5,7 @@ import {
   logoutUser,
 } from "../services/auth.service.js";
 import * as authService from "../services/auth.service.js";
+import AppError from "../utils/AppError.js";
 
 const accessTokenCookieOptions = {
   httpOnly: true,
@@ -26,15 +27,11 @@ export const register = async (req, res, next) => {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
-      const error = new Error("Name, email and password are required");
-      error.statusCode = 400;
-      throw error;
+      throw new AppError("Name, email and password are required", 400);
     }
 
     if (password.length < 6) {
-      const error = new Error("Password must be at least 6 characters");
-      error.statusCode = 400;
-      throw error;
+      throw new AppError("Password must be at least 6 characters", 400);
     }
 
     const result = await registerUser({
@@ -65,9 +62,7 @@ export const login = async (req, res, next) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      const error = new Error("Email and password are required");
-      error.statusCode = 400;
-      throw error;
+      throw new AppError("Email and password are required", 400);
     }
 
     const result = await loginUser({

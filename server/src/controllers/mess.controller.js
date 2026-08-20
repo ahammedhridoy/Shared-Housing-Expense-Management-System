@@ -5,6 +5,7 @@ import {
   updateMess,
   removeMessMember,
 } from "../services/mess.service.js";
+import AppError from "../utils/AppError.js";
 
 // Controller function to create a new mess
 export const createMessController = async (req, res, next) => {
@@ -12,9 +13,7 @@ export const createMessController = async (req, res, next) => {
     const { name, description, address } = req.body;
 
     if (!name) {
-      const error = new Error("Mess name is required");
-      error.statusCode = 400;
-      throw error;
+      throw new AppError("Mess name is required", 400);
     }
 
     const mess = await createMess({
@@ -59,9 +58,7 @@ export const getMessDetailsController = async (req, res, next) => {
     const { messId } = req.params;
 
     if (!messId) {
-      const error = new Error("Mess ID is required");
-      error.statusCode = 400;
-      throw error;
+      throw new AppError("Mess ID is required", 400);
     }
 
     const mess = await getMessDetails(req.user.userId, messId);

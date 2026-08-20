@@ -9,6 +9,10 @@ import authRoutes from "./routes/auth.routes.js";
 import messRoutes from "./routes/mess.routes.js";
 import invitationRoutes from "./routes/invitation.routes.js";
 import mealRoutes from "./routes/meal.routes.js";
+import expenseRoutes from "./routes/expense.routes.js";
+import paymentRoutes from "./routes/payment.routes.js";
+import monthlyBillRoutes from "./routes/monthlyBill.routes.js";
+import settlementRoutes from "./routes/settlement.routes.js";
 
 const app = express();
 
@@ -48,6 +52,10 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/mess", messRoutes);
 app.use("/api/v1/invitations", invitationRoutes);
 app.use("/api/v1", mealRoutes);
+app.use("/api/v1", expenseRoutes);
+app.use("/api/v1", paymentRoutes);
+app.use("/api/v1", monthlyBillRoutes);
+app.use("/api/v1", settlementRoutes);
 
 // 404 handler
 app.use(notFound);

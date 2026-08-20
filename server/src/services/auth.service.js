@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 
 import prisma from "../config/database.js";
+import AppError from "../utils/AppError.js";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -23,9 +24,7 @@ export const registerUser = async ({ name, email, password }) => {
   });
 
   if (existingUser) {
-    const error = new Error("Email already registered");
-    error.statusCode = 409;
-    throw error;
+    throw new AppError("Email already registered", 409);
   }
 
   const hashedPassword = await bcrypt.hash(password, 12);
@@ -84,17 +83,13 @@ export const loginUser = async ({ email, password }) => {
   });
 
   if (!user) {
-    const error = new Error("Invalid email or password");
-    error.statusCode = 401;
-    throw error;
+    throw new AppError("Invalid email or password", 401);
   }
 
   const isMatch = await bcrypt.compare(password, user.password);
 
   if (!isMatch) {
-    const error = new Error("Invalid email or password");
-    error.statusCode = 401;
-    throw error;
+    throw new AppError("Invalid email or password", 401);
   }
 
   const accessToken = generateAccessToken(user);
@@ -127,9 +122,7 @@ export const loginUser = async ({ email, password }) => {
 // Refresh an access token
 export const refreshAccessToken = async (refreshToken) => {
   if (!refreshToken) {
-    const error = new Error("Refresh token is required");
-    error.statusCode = 401;
-    throw error;
+    throw new AppError("Refresh token is required", 401);
   }
 
   const tokenHash = hashRefreshToken(refreshToken);
@@ -144,21 +137,15 @@ export const refreshAccessToken = async (refreshToken) => {
   });
 
   if (!storedToken) {
-    const error = new Error("Invalid refresh token");
-    error.statusCode = 401;
-    throw error;
+    throw new AppError("Invalid refresh token", 401);
   }
 
   if (storedToken.revokedAt) {
-    const error = new Error("Refresh token has been revoked");
-    error.statusCode = 401;
-    throw error;
+    throw new AppError("Refresh token has been revoked", 401);
   }
 
   if (storedToken.expiresAt < new Date()) {
-    const error = new Error("Refresh token has expired");
-    error.statusCode = 401;
-    throw error;
+    throw new AppError("Refresh token has expired", 401);
   }
 
   const user = storedToken.user;

@@ -1,8 +1,8 @@
 import express from "express";
 
 import {
-  acceptInvitationController,
   createInvitationController,
+  acceptInvitationController,
 } from "../controllers/invitation.controller.js";
 
 import authMiddleware from "../middlewares/auth.middleware.js";

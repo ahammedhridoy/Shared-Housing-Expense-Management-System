@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 
 import prisma from "../config/database.js";
+import AppError from "../utils/AppError.js";
 
 export const createInvitation = async ({ messId, invitedBy, email }) => {
   const normalizedEmail = email.trim().toLowerCase();
@@ -22,11 +23,7 @@ export const createInvitation = async ({ messId, invitedBy, email }) => {
     });
 
     if (existingMembership) {
-      const error = new Error("This user is already a member of the mess");
-
-      error.statusCode = 409;
-
-      throw error;
+      throw new AppError("This user is already a member of the mess", 409);
     }
   }
 
@@ -39,13 +36,7 @@ export const createInvitation = async ({ messId, invitedBy, email }) => {
   });
 
   if (existingInvitation) {
-    const error = new Error(
-      "A pending invitation already exists for this email",
-    );
-
-    error.statusCode = 409;
-
-    throw error;
+    throw new AppError("A pending invitation already exists for this email", 409);
   }
 
   const token = crypto.randomBytes(32).toString("hex");
@@ -82,18 +73,11 @@ export const acceptInvitation = async ({ token, userId }) => {
   });
 
   if (!invitation) {
-    const error = new Error("Invalid invitation");
-    error.statusCode = 404;
-    throw error;
+    throw new AppError("Invalid invitation", 404);
   }
 
   if (invitation.status !== "PENDING") {
-    const error = new Error(
-      `Invitation has already been ${invitation.status.toLowerCase()}`,
-    );
-
-    error.statusCode = 400;
-    throw error;
+    throw new AppError(`Invitation has already been ${invitation.status.toLowerCase()}`, 400);
   }
 
   if (invitation.expiresAt < new Date()) {
@@ -106,9 +90,7 @@ export const acceptInvitation = async ({ token, userId }) => {
       },
     });
 
-    const error = new Error("Invitation has expired");
-    error.statusCode = 400;
-    throw error;
+    throw new AppError("Invitation has expired", 400);
   }
 
   const user = await prisma.user.findUnique({
@@ -118,18 +100,11 @@ export const acceptInvitation = async ({ token, userId }) => {
   });
 
   if (!user) {
-    const error = new Error("User not found");
-    error.statusCode = 404;
-    throw error;
+    throw new AppError("User not found", 404);
   }
 
   if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
-    const error = new Error(
-      "This invitation was sent to a different email address",
-    );
-
-    error.statusCode = 403;
-    throw error;
+    throw new AppError("This invitation was sent to a different email address", 403);
   }
 
   const existingMembership = await prisma.messMember.findUnique({
@@ -142,10 +117,7 @@ export const acceptInvitation = async ({ token, userId }) => {
   });
 
   if (existingMembership) {
-    const error = new Error("You are already a member of this mess");
-
-    error.statusCode = 409;
-    throw error;
+    throw new AppError("You are already a member of this mess", 409);
   }
 
   const result = await prisma.$transaction(async (tx) => {

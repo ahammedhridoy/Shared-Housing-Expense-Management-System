@@ -1,4 +1,5 @@
 import prisma from "../config/database.js";
+import AppError from "../utils/AppError.js";
 
 // Service function to create a new mess
 export const createMess = async ({ userId, name, description, address }) => {
@@ -83,9 +84,7 @@ export const getMessDetails = async (userId, messId) => {
   });
 
   if (!membership) {
-    const error = new Error("You are not a member of this mess");
-    error.statusCode = 403;
-    throw error;
+    throw new AppError("You are not a member of this mess", 403);
   }
 
   const mess = await prisma.mess.findUnique({
@@ -103,9 +102,7 @@ export const getMessDetails = async (userId, messId) => {
   });
 
   if (!mess) {
-    const error = new Error("Mess not found");
-    error.statusCode = 404;
-    throw error;
+    throw new AppError("Mess not found", 404);
   }
 
   return {
@@ -126,9 +123,7 @@ export const updateMess = async ({ messId, name, description, address }) => {
   });
 
   if (!existingMess) {
-    const error = new Error("Mess not found");
-    error.statusCode = 404;
-    throw error;
+    throw new AppError("Mess not found", 404);
   }
 
   const data = {};
@@ -137,9 +132,7 @@ export const updateMess = async ({ messId, name, description, address }) => {
     const trimmedName = name.trim();
 
     if (!trimmedName) {
-      const error = new Error("Mess name cannot be empty");
-      error.statusCode = 400;
-      throw error;
+      throw new AppError("Mess name cannot be empty", 400);
     }
 
     data.name = trimmedName;
@@ -174,11 +167,7 @@ export const updateMess = async ({ messId, name, description, address }) => {
 // Service function to remove a member from a mess
 export const removeMessMember = async ({ messId, userId, managerId }) => {
   if (userId === managerId) {
-    const error = new Error("A manager cannot remove themselves from the mess");
-
-    error.statusCode = 400;
-
-    throw error;
+    throw new AppError("A manager cannot remove themselves from the mess", 400);
   }
 
   const membership = await prisma.messMember.findUnique({
@@ -191,11 +180,7 @@ export const removeMessMember = async ({ messId, userId, managerId }) => {
   });
 
   if (!membership) {
-    const error = new Error("User is not a member of this mess");
-
-    error.statusCode = 404;
-
-    throw error;
+    throw new AppError("User is not a member of this mess", 404);
   }
 
   await prisma.messMember.delete({
