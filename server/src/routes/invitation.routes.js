@@ -2,7 +2,10 @@ import express from "express";
 
 import {
   createInvitationController,
+  getPendingInvitationsController,
+  getMessInvitationsController,
   acceptInvitationController,
+  cancelInvitationController,
 } from "../controllers/invitation.controller.js";
 
 import authMiddleware from "../middlewares/auth.middleware.js";
@@ -12,13 +15,30 @@ import validateParams from "../middlewares/validateParams.middleware.js";
 import {
   createInvitationSchema,
   invitationMessIdParamSchema,
-  acceptInvitationParamSchema,
+  invitationIdParamSchema,
 } from "../validations/invitation.validation.js";
 
 const router = express.Router();
 
+// User sees their pending invitations
+router.get(
+  "/pending",
+  authMiddleware,
+  getPendingInvitationsController,
+);
+
+// Manager sees all invitations for their mess
+router.get(
+  "/mess/:messId",
+  authMiddleware,
+  validateParams(invitationMessIdParamSchema),
+  messManagerMiddleware,
+  getMessInvitationsController,
+);
+
+// Manager sends invitation
 router.post(
-  "/mess/:messId/invitations",
+  "/mess/:messId",
   authMiddleware,
   validateParams(invitationMessIdParamSchema),
   messManagerMiddleware,
@@ -26,11 +46,20 @@ router.post(
   createInvitationController,
 );
 
+// User accepts invitation
 router.post(
-  "/:token/accept",
+  "/:invitationId/accept",
   authMiddleware,
-  validateParams(acceptInvitationParamSchema),
+  validateParams(invitationIdParamSchema),
   acceptInvitationController,
+);
+
+// Manager or inviter cancels invitation
+router.delete(
+  "/:invitationId/cancel",
+  authMiddleware,
+  validateParams(invitationIdParamSchema),
+  cancelInvitationController,
 );
 
 export default router;

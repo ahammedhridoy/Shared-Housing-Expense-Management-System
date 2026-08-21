@@ -14,9 +14,6 @@ export const invitationMessIdParamSchema = z.object({
   messId: objectId,
 });
 
-export const acceptInvitationParamSchema = z.object({
-  token: z
-    .string()
-    .min(1, "Invitation token is required")
-    .regex(/^[0-9a-f]+$/i, "Invalid token format"),
+export const invitationIdParamSchema = z.object({
+  invitationId: objectId,
 });

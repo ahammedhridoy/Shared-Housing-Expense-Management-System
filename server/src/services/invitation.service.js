@@ -64,16 +64,93 @@ export const createInvitation = async ({ messId, invitedBy, email }) => {
   return invitation;
 };
 
-// Accept an invitation
-export const acceptInvitation = async ({ token, userId }) => {
-  const invitation = await prisma.invitation.findUnique({
+export const getPendingInvitations = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { email: true },
+  });
+
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  const invitations = await prisma.invitation.findMany({
     where: {
-      token,
+      email: user.email.toLowerCase(),
+      status: "PENDING",
+      expiresAt: { gt: new Date() },
+    },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      expiresAt: true,
+      createdAt: true,
+      mess: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          address: true,
+        },
+      },
+      inviter: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return invitations;
+};
+
+export const getMessInvitations = async ({ messId, userId }) => {
+  const membership = await prisma.messMember.findUnique({
+    where: {
+      userId_messId: {
+        userId,
+        messId,
+      },
     },
   });
 
+  if (!membership) {
+    throw new AppError("You are not a member of this mess", 403);
+  }
+
+  const invitations = await prisma.invitation.findMany({
+    where: { messId },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      expiresAt: true,
+      createdAt: true,
+      inviter: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return invitations;
+};
+
+export const acceptInvitation = async ({ invitationId, userId }) => {
+  const invitation = await prisma.invitation.findUnique({
+    where: { id: invitationId },
+  });
+
   if (!invitation) {
-    throw new AppError("Invalid invitation", 404);
+    throw new AppError("Invitation not found", 404);
   }
 
   if (invitation.status !== "PENDING") {
@@ -82,21 +159,15 @@ export const acceptInvitation = async ({ token, userId }) => {
 
   if (invitation.expiresAt < new Date()) {
     await prisma.invitation.update({
-      where: {
-        id: invitation.id,
-      },
-      data: {
-        status: "EXPIRED",
-      },
+      where: { id: invitation.id },
+      data: { status: "EXPIRED" },
     });
 
     throw new AppError("Invitation has expired", 400);
   }
 
   const user = await prisma.user.findUnique({
-    where: {
-      id: userId,
-    },
+    where: { id: userId },
   });
 
   if (!user) {
@@ -130,16 +201,49 @@ export const acceptInvitation = async ({ token, userId }) => {
     });
 
     await tx.invitation.update({
-      where: {
-        id: invitation.id,
-      },
-      data: {
-        status: "ACCEPTED",
-      },
+      where: { id: invitation.id },
+      data: { status: "ACCEPTED" },
     });
 
     return membership;
   });
 
   return result;
+};
+
+export const cancelInvitation = async ({ invitationId, userId }) => {
+  const invitation = await prisma.invitation.findUnique({
+    where: { id: invitationId },
+  });
+
+  if (!invitation) {
+    throw new AppError("Invitation not found", 404);
+  }
+
+  const membership = await prisma.messMember.findUnique({
+    where: {
+      userId_messId: {
+        userId,
+        messId: invitation.messId,
+      },
+    },
+  });
+
+  if (!membership) {
+    throw new AppError("You are not a member of this mess", 403);
+  }
+
+  if (membership.role !== "MANAGER" && membership.userId !== invitation.invitedBy) {
+    throw new AppError("Only the manager or the inviter can cancel this invitation", 403);
+  }
+
+  if (invitation.status !== "PENDING") {
+    throw new AppError(`Invitation has already been ${invitation.status.toLowerCase()}`, 400);
+  }
+
+  await prisma.invitation.delete({
+    where: { id: invitationId },
+  });
+
+  return { message: "Invitation cancelled successfully" };
 };

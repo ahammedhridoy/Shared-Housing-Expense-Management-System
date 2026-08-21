@@ -19,9 +19,14 @@ import {
 
 const router = express.Router();
 
-router.post("/", authMiddleware, validate(createMessSchema), createMessController);
+router.post(
+  "/",
+  authMiddleware,
+  validate(createMessSchema),
+  createMessController,
+);
 
-router.get("/", authMiddleware, getMyMessesController);
+router.get("/my", authMiddleware, getMyMessesController);
 
 router.get(
   "/:messId",

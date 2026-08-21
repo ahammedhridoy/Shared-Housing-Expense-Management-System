@@ -8,7 +8,7 @@ export {
 export {
   createInvitationSchema,
   invitationMessIdParamSchema,
-  acceptInvitationParamSchema,
+  invitationIdParamSchema,
 } from "./invitation.validation.js";
 export {
   addMealSchema,
