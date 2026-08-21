@@ -2,17 +2,11 @@ import {
   createInvitation,
   acceptInvitation,
 } from "../services/invitation.service.js";
-import AppError from "../utils/AppError.js";
 
-// Create an invitation
 export const createInvitationController = async (req, res, next) => {
   try {
     const { messId } = req.params;
     const { email } = req.body;
-
-    if (!email) {
-      throw new AppError("Email is required", 400);
-    }
 
     const invitation = await createInvitation({
       messId,
@@ -32,14 +26,9 @@ export const createInvitationController = async (req, res, next) => {
   }
 };
 
-// Accept an invitation
 export const acceptInvitationController = async (req, res, next) => {
   try {
     const { token } = req.params;
-
-    if (!token) {
-      throw new AppError("Invitation token is required", 400);
-    }
 
     const membership = await acceptInvitation({
       token,

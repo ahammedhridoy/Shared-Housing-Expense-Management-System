@@ -1,15 +1,10 @@
 import prisma from "../config/database.js";
+import AppError from "../utils/AppError.js";
 
 export const messManagerMiddleware = async (req, res, next) => {
   try {
     const { messId } = req.params;
     const userId = req.user.userId;
-
-    if (!messId) {
-      const error = new Error("Mess ID is required");
-      error.statusCode = 400;
-      throw error;
-    }
 
     const membership = await prisma.messMember.findUnique({
       where: {
@@ -27,15 +22,11 @@ export const messManagerMiddleware = async (req, res, next) => {
     });
 
     if (!membership) {
-      const error = new Error("You are not a member of this mess");
-      error.statusCode = 403;
-      throw error;
+      throw new AppError("You are not a member of this mess", 403);
     }
 
     if (membership.role !== "MANAGER") {
-      const error = new Error("Only mess managers can perform this action");
-      error.statusCode = 403;
-      throw error;
+      throw new AppError("Only mess managers can perform this action", 403);
     }
 
     req.messMembership = membership;

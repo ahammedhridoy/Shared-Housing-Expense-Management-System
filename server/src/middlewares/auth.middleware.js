@@ -1,4 +1,5 @@
 import jwt from "jsonwebtoken";
+import AppError from "../utils/AppError.js";
 
 const authMiddleware = (req, res, next) => {
   try {
@@ -6,9 +7,7 @@ const authMiddleware = (req, res, next) => {
       req.cookies?.accessToken || req.headers?.authorization?.split(" ")[1];
 
     if (!accessToken) {
-      const error = new Error("Authentication required");
-      error.statusCode = 401;
-      throw error;
+      throw new AppError("Authentication required", 401);
     }
 
     const decoded = jwt.verify(accessToken, process.env.JWT_ACCESS_SECRET);
@@ -20,14 +19,16 @@ const authMiddleware = (req, res, next) => {
 
     next();
   } catch (error) {
+    if (error instanceof AppError) {
+      return next(error);
+    }
+
     if (error.name === "TokenExpiredError") {
-      error.statusCode = 401;
-      error.message = "Access token expired";
+      return next(new AppError("Access token expired", 401));
     }
 
     if (error.name === "JsonWebTokenError") {
-      error.statusCode = 401;
-      error.message = "Invalid access token";
+      return next(new AppError("Invalid access token", 401));
     }
 
     next(error);
