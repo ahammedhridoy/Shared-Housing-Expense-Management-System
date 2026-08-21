@@ -164,6 +164,43 @@ export const updateMess = async ({ messId, name, description, address }) => {
   return updatedMess;
 };
 
+// Service function to get all members of a mess
+export const getMessMembers = async ({ userId, messId }) => {
+  const membership = await prisma.messMember.findUnique({
+    where: {
+      userId_messId: {
+        userId,
+        messId,
+      },
+    },
+  });
+
+  if (!membership) {
+    throw new AppError("You are not a member of this mess", 403);
+  }
+
+  const members = await prisma.messMember.findMany({
+    where: { messId },
+    select: {
+      id: true,
+      role: true,
+      createdAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "asc",
+    },
+  });
+
+  return members;
+};
+
 // Service function to remove a member from a mess
 export const removeMessMember = async ({ messId, userId, managerId }) => {
   if (userId === managerId) {

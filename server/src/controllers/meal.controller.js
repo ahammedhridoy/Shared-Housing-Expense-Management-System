@@ -9,11 +9,12 @@ import {
 export const addMealController = async (req, res, next) => {
   try {
     const { messId } = req.params;
-    const { date, type, quantity } = req.body;
+    const { userId, date, type, quantity } = req.body;
 
     const meal = await addMeal({
-      userId: req.user.userId,
+      managerId: req.user.userId,
       messId,
+      userId,
       date,
       type,
       quantity,
@@ -59,6 +60,7 @@ export const getMessMealsController = async (req, res, next) => {
 
     const meals = await getMessMeals({
       messId,
+      userId: req.user.userId,
       startDate,
       endDate,
       type,
@@ -77,12 +79,13 @@ export const getMessMealsController = async (req, res, next) => {
 export const updateMealController = async (req, res, next) => {
   try {
     const { messId, mealId } = req.params;
-    const { date, type, quantity } = req.body;
+    const { userId, date, type, quantity } = req.body;
 
     const meal = await updateMeal({
-      userId: req.user.userId,
+      managerId: req.user.userId,
       messId,
       mealId,
+      userId,
       date,
       type,
       quantity,
@@ -103,7 +106,7 @@ export const deleteMealController = async (req, res, next) => {
     const { messId, mealId } = req.params;
 
     await deleteMeal({
-      userId: req.user.userId,
+      managerId: req.user.userId,
       messId,
       mealId,
     });

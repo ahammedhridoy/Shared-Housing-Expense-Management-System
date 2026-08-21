@@ -2,11 +2,12 @@ import { z } from "zod";
 
 const objectId = z.string().regex(/^[0-9a-f]{24}$/i, "Invalid ID format");
 
-const mealTypeEnum = z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"], {
-  errorMap: () => ({ message: "Meal type must be BREAKFAST, LUNCH, DINNER, or SNACK" }),
+const mealTypeEnum = z.enum(["BREAKFAST", "LUNCH", "DINNER"], {
+  errorMap: () => ({ message: "Meal type must be BREAKFAST, LUNCH, or DINNER" }),
 });
 
 export const addMealSchema = z.object({
+  userId: objectId,
   date: z
     .string()
     .min(1, "Meal date is required")
@@ -23,6 +24,7 @@ export const addMealSchema = z.object({
 
 export const updateMealSchema = z
   .object({
+    userId: objectId.optional(),
     date: z
       .string()
       .datetime("Meal date must be a valid ISO 8601 datetime")
@@ -40,6 +42,7 @@ export const updateMealSchema = z
   });
 
 export const mealQuerySchema = z.object({
+  userId: objectId.optional(),
   startDate: z
     .string()
     .datetime("Start date must be a valid ISO 8601 datetime")

@@ -2,6 +2,7 @@ import {
   createMess,
   getMyMesses,
   getMessDetails,
+  getMessMembers,
   updateMess,
   removeMessMember,
 } from "../services/mess.service.js";
@@ -51,6 +52,25 @@ export const getMessDetailsController = async (req, res, next) => {
       success: true,
       message: "Mess details fetched successfully",
       data: { mess },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getMessMembersController = async (req, res, next) => {
+  try {
+    const { messId } = req.params;
+
+    const members = await getMessMembers({
+      userId: req.user.userId,
+      messId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Mess members fetched successfully",
+      data: { members, count: members.length },
     });
   } catch (error) {
     next(error);

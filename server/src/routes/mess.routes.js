@@ -2,6 +2,7 @@ import express from "express";
 import {
   createMessController,
   getMessDetailsController,
+  getMessMembersController,
   getMyMessesController,
   removeMessMemberController,
   updateMessController,
@@ -33,6 +34,13 @@ router.get(
   authMiddleware,
   validateParams(messIdParamSchema),
   getMessDetailsController,
+);
+
+router.get(
+  "/:messId/members",
+  authMiddleware,
+  validateParams(messIdParamSchema),
+  getMessMembersController,
 );
 
 router.patch(
