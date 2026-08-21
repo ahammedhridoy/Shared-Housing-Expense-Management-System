@@ -201,13 +201,17 @@ export const logoutUser = async (refreshToken) => {
 
   const tokenHash = hashRefreshToken(refreshToken);
 
-  await prisma.refreshToken.updateMany({
-    where: {
-      tokenHash,
-      revokedAt: null,
-    },
-    data: {
-      revokedAt: new Date(),
-    },
+  const storedToken = await prisma.refreshToken.findUnique({
+    where: { tokenHash },
+    select: { id: true, revokedAt: true },
+  });
+
+  if (!storedToken || storedToken.revokedAt) {
+    return;
+  }
+
+  await prisma.refreshToken.update({
+    where: { id: storedToken.id },
+    data: { revokedAt: new Date() },
   });
 };

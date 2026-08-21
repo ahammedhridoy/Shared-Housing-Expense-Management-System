@@ -21,8 +21,8 @@ export const finalizeMonthSchema = z.object({
 
 export const monthlyBillParamSchema = z.object({
   messId: objectId,
-  month: monthValidator,
-  year: yearValidator,
+  month: z.coerce.number().int("Month must be a whole number").min(1, "Month must be between 1 and 12").max(12, "Month must be between 1 and 12"),
+  year: z.coerce.number().int("Year must be a whole number").min(2000, "Year must be 2000 or later").max(2100, "Year must be 2100 or earlier"),
 });
 
 export const monthlyBillMessIdParamSchema = z.object({

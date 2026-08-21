@@ -8,7 +8,11 @@ const validateQuery = (schema) => (req, res, next) => {
     return next(new AppError(message, 400));
   }
 
-  req.query = result.data;
+  Object.defineProperty(req, "query", {
+    value: result.data,
+    writable: true,
+    configurable: true,
+  });
   next();
 };
 

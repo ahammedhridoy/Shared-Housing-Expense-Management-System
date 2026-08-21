@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "generate": "npx prisma generate",
     "push": "npx prisma db push",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [],
   "author": "",
