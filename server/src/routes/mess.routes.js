@@ -6,6 +6,7 @@ import {
   getMyMessesController,
   removeMessMemberController,
   updateMessController,
+  deleteMessController,
 } from "../controllers/mess.controller.js";
 import authMiddleware from "../middlewares/auth.middleware.js";
 import { messManagerMiddleware } from "../middlewares/mess.middleware.js";
@@ -57,6 +58,14 @@ router.delete(
   validateParams(messMemberParamSchema),
   messManagerMiddleware,
   removeMessMemberController,
+);
+
+router.delete(
+  "/:messId",
+  authMiddleware,
+  validateParams(messIdParamSchema),
+  messManagerMiddleware,
+  deleteMessController,
 );
 
 export default router;

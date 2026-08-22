@@ -4,6 +4,7 @@ import {
   getMessDetails,
   getMessMembers,
   updateMess,
+  deleteMess,
   removeMessMember,
 } from "../services/mess.service.js";
 
@@ -107,6 +108,24 @@ export const removeMessMemberController = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Member removed successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteMessController = async (req, res, next) => {
+  try {
+    const { messId } = req.params;
+
+    await deleteMess({
+      messId,
+      userId: req.user.userId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Mess deleted successfully",
     });
   } catch (error) {
     next(error);

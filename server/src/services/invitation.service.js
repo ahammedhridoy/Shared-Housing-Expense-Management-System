@@ -247,3 +247,44 @@ export const cancelInvitation = async ({ invitationId, userId }) => {
 
   return { message: "Invitation cancelled successfully" };
 };
+
+export const rejectInvitation = async ({ invitationId, userId }) => {
+  const invitation = await prisma.invitation.findUnique({
+    where: { id: invitationId },
+  });
+
+  if (!invitation) {
+    throw new AppError("Invitation not found", 404);
+  }
+
+  if (invitation.status !== "PENDING") {
+    throw new AppError(`Invitation has already been ${invitation.status.toLowerCase()}`, 400);
+  }
+
+  if (invitation.expiresAt < new Date()) {
+    await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { status: "EXPIRED" },
+    });
+    throw new AppError("Invitation has expired", 400);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  if (user.email.toLowerCase() !== invitation.email.toLowerCase()) {
+    throw new AppError("This invitation was sent to a different email address", 403);
+  }
+
+  await prisma.invitation.update({
+    where: { id: invitationId },
+    data: { status: "REJECTED" },
+  });
+
+  return { message: "Invitation rejected successfully" };
+};

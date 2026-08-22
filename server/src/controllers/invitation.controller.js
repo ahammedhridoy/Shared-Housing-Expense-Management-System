@@ -4,6 +4,7 @@ import {
   getMessInvitations,
   acceptInvitation,
   cancelInvitation,
+  rejectInvitation,
 } from "../services/invitation.service.js";
 
 export const createInvitationController = async (req, res, next) => {
@@ -84,6 +85,24 @@ export const cancelInvitationController = async (req, res, next) => {
     const { invitationId } = req.params;
 
     const result = await cancelInvitation({
+      invitationId,
+      userId: req.user.userId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const rejectInvitationController = async (req, res, next) => {
+  try {
+    const { invitationId } = req.params;
+
+    const result = await rejectInvitation({
       invitationId,
       userId: req.user.userId,
     });

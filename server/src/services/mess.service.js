@@ -226,3 +226,43 @@ export const removeMessMember = async ({ messId, userId, managerId }) => {
     },
   });
 };
+
+// Service function to delete a mess (manager only)
+export const deleteMess = async ({ messId, userId }) => {
+  const membership = await prisma.messMember.findUnique({
+    where: {
+      userId_messId: {
+        userId,
+        messId,
+      },
+    },
+  });
+
+  if (!membership) {
+    throw new AppError("You are not a member of this mess", 403);
+  }
+
+  if (membership.role !== "MANAGER") {
+    throw new AppError("Only the manager can delete the mess", 403);
+  }
+
+  const mess = await prisma.mess.findUnique({
+    where: { id: messId },
+  });
+
+  if (!mess) {
+    throw new AppError("Mess not found", 404);
+  }
+
+  // Delete all related records first, then the mess
+  await prisma.$transaction([
+    prisma.messMember.deleteMany({ where: { messId } }),
+    prisma.invitation.deleteMany({ where: { messId } }),
+    prisma.meal.deleteMany({ where: { messId } }),
+    prisma.expense.deleteMany({ where: { messId } }),
+    prisma.payment.deleteMany({ where: { messId } }),
+    prisma.settlement.deleteMany({ where: { bill: { messId } } }),
+    prisma.monthlyBill.deleteMany({ where: { messId } }),
+    prisma.mess.delete({ where: { id: messId } }),
+  ]);
+};

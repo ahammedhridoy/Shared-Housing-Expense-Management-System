@@ -6,6 +6,7 @@ import {
   getMessInvitationsController,
   acceptInvitationController,
   cancelInvitationController,
+  rejectInvitationController,
 } from "../controllers/invitation.controller.js";
 
 import authMiddleware from "../middlewares/auth.middleware.js";
@@ -52,6 +53,14 @@ router.post(
   authMiddleware,
   validateParams(invitationIdParamSchema),
   acceptInvitationController,
+);
+
+// User rejects invitation
+router.post(
+  "/:invitationId/reject",
+  authMiddleware,
+  validateParams(invitationIdParamSchema),
+  rejectInvitationController,
 );
 
 // Manager or inviter cancels invitation

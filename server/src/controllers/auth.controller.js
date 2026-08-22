@@ -3,6 +3,7 @@ import {
   registerUser,
   refreshAccessToken,
   logoutUser,
+  getCurrentUser as getCurrentUserService,
 } from "../services/auth.service.js";
 import AppError from "../utils/AppError.js";
 
@@ -60,10 +61,12 @@ export const login = async (req, res, next) => {
 
 export const getCurrentUser = async (req, res, next) => {
   try {
+    const user = await getCurrentUserService(req.user.userId);
+
     res.status(200).json({
       success: true,
       message: "Authenticated user",
-      data: { user: req.user },
+      data: { user },
     });
   } catch (error) {
     next(error);

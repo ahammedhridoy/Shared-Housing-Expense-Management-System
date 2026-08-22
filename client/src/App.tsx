@@ -1,11 +1,13 @@
+import { RouterProvider } from "react-router-dom"
+import { router } from "@/routes"
+import QueryProvider from "@/components/common/QueryProvider"
+
 function App() {
   return (
-    <div className="min-h-screen bg-background">
-      <h1 className="text-2xl font-semibold text-foreground">
-        Shared Housing Expense Management
-      </h1>
-    </div>
-  );
+    <QueryProvider>
+      <RouterProvider router={router} />
+    </QueryProvider>
+  )
 }
 
-export default App;
+export default App

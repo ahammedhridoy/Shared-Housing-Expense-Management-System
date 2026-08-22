@@ -193,6 +193,27 @@ export const refreshAccessToken = async (refreshToken) => {
   };
 };
 
+// Get current user by userId
+export const getCurrentUser = async (userId) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!user) {
+    throw new AppError("User not found", 404);
+  }
+
+  return user;
+};
+
 // Logout a user
 export const logoutUser = async (refreshToken) => {
   if (!refreshToken) {
