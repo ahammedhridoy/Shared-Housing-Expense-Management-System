@@ -7,6 +7,8 @@ import AppLayout from "@/layouts/AppLayout"
 // Eagerly loaded — used on every navigation
 import LoginPage from "@/pages/LoginPage"
 import RegisterPage from "@/pages/RegisterPage"
+import ForgotPasswordPage from "@/pages/ForgotPasswordPage"
+import ResetPasswordPage from "@/pages/ResetPasswordPage"
 
 // Lazy-loaded page components
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"))
@@ -49,6 +51,22 @@ export const router = createBrowserRouter([
     element: (
       <PublicRoute>
         <RegisterPage />
+      </PublicRoute>
+    ),
+  },
+  {
+    path: "/forgot-password",
+    element: (
+      <PublicRoute>
+        <ForgotPasswordPage />
+      </PublicRoute>
+    ),
+  },
+  {
+    path: "/reset-password",
+    element: (
+      <PublicRoute>
+        <ResetPasswordPage />
       </PublicRoute>
     ),
   },

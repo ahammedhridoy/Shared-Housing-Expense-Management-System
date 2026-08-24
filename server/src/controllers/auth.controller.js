@@ -4,6 +4,8 @@ import {
   refreshAccessToken,
   logoutUser,
   getCurrentUser as getCurrentUserService,
+  forgotPassword as forgotPasswordService,
+  resetPassword as resetPasswordService,
 } from "../services/auth.service.js";
 import AppError from "../utils/AppError.js";
 
@@ -107,6 +109,36 @@ export const logout = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Logout successful",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const result = await forgotPasswordService({ email });
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const resetPassword = async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+
+    const result = await resetPasswordService({ token, password });
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
     });
   } catch (error) {
     next(error);
