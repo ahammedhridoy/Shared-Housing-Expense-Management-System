@@ -1,8 +1,12 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { expenseApi, messApi } from "@/services"
+import { useQuery } from "@tanstack/react-query"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { messApi } from "@/services"
 import { useAuth } from "@/hooks/useAuth"
+import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/features/expenses/hooks/useExpenses"
+import { createExpenseSchema, type CreateExpenseFormData, updateExpenseSchema, type UpdateExpenseFormData } from "@/features/expenses/validations/expense.schema"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Plus, Receipt, Trash2 } from "lucide-react"
+import { Plus, Receipt, Trash2, Pencil } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
 
 const categories = ["FOOD","RENT","ELECTRICITY","GAS","WATER","INTERNET","MAINTENANCE","MAID_COST","OTHER"]
@@ -34,35 +38,58 @@ interface ExpenseWithRecorder {
 export default function ExpensesPage() {
   const { messId } = useParams<{ messId: string }>()
   const { user } = useAuth()
-  const qc = useQueryClient()
+  const mid = messId!
   const [open, setOpen] = useState(false)
-  const [form, setForm] = useState({ title: "", description: "", amount: "", category: "FOOD", date: new Date().toISOString().split("T")[0] })
+  const [editExpense, setEditExpense] = useState<ExpenseWithRecorder | null>(null)
+  const [editOpen, setEditOpen] = useState(false)
+  const [detailExpense, setDetailExpense] = useState<ExpenseWithRecorder | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["mess-expenses", messId],
-    queryFn: () => expenseApi.getAll(messId!),
-    enabled: !!messId,
-  })
+  const { data, isLoading } = useExpenses(mid)
 
   const { data: membersData } = useQuery({
-    queryKey: ["mess-members", messId],
-    queryFn: () => messApi.getMembers(messId!),
-    enabled: !!messId,
+    queryKey: ["mess-members", mid],
+    queryFn: () => messApi.getMembers(mid),
+    enabled: !!mid,
   })
 
   const isManager = membersData?.members?.some((m) => m.user.id === user?.id && m.role === "MANAGER") ?? false
 
-  const create = useMutation({
-    mutationFn: () => expenseApi.create(messId!, { title: form.title, description: form.description || undefined, amount: parseFloat(form.amount), category: form.category, date: form.date }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["mess-expenses", messId] }); setOpen(false); setForm({ title: "", description: "", amount: "", category: "FOOD", date: new Date().toISOString().split("T")[0] }) },
-  })
-
-  const del = useMutation({
-    mutationFn: (id: string) => expenseApi.delete(messId!, id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["mess-expenses", messId] }),
-  })
+  const create = useCreateExpense(mid)
+  const update = useUpdateExpense(mid)
+  const del = useDeleteExpense(mid)
 
   const expenses: ExpenseWithRecorder[] = (data?.expenses as ExpenseWithRecorder[]) ?? []
+
+  // Create form
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<CreateExpenseFormData>({
+    resolver: zodResolver(createExpenseSchema),
+    defaultValues: { title: "", description: "", amount: 0, category: "FOOD", date: new Date().toISOString().split("T")[0] },
+  })
+
+  // Edit form
+  const { register: rEdit, handleSubmit: hEdit, reset: resetEdit, setValue: setEditVal, watch: wEdit, formState: { errors: eErrors } } = useForm<UpdateExpenseFormData>({
+    resolver: zodResolver(updateExpenseSchema),
+  })
+
+  function openEdit(ex: ExpenseWithRecorder) {
+    setEditExpense(ex)
+    resetEdit({ title: ex.title, description: ex.description || "", amount: ex.amount, category: ex.category })
+    setEditOpen(true)
+  }
+
+  function onCreateSubmit(data: CreateExpenseFormData) {
+    create.mutate({ title: data.title, description: data.description || undefined, amount: data.amount, category: data.category, date: data.date }, {
+      onSuccess: () => { reset(); setOpen(false) },
+    })
+  }
+
+  function onEditSubmit(data: UpdateExpenseFormData) {
+    if (!editExpense) return
+    update.mutate({ expenseId: editExpense.id, data: { title: data.title, description: data.description || undefined, amount: data.amount, category: data.category, date: editExpense.date } }, {
+      onSuccess: () => { resetEdit(); setEditExpense(null); setEditOpen(false) },
+    })
+  }
 
   return (
     <div className="space-y-6">
@@ -72,33 +99,38 @@ export default function ExpensesPage() {
           <DialogTrigger render={<Button className="gap-2"><Plus className="h-4 w-4" />Add Expense</Button>} />
           <DialogContent>
             <DialogHeader><DialogTitle>Add Expense</DialogTitle></DialogHeader>
-            <form onSubmit={(e) => { e.preventDefault(); create.mutate() }} className="space-y-4">
+            <form onSubmit={handleSubmit(onCreateSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="exp-title">Title</Label>
-                <Input id="exp-title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="e.g. Groceries" required />
+                <Input id="exp-title" {...register("title")} placeholder="e.g. Groceries" />
+                {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="exp-desc">Description (optional)</Label>
-                <Input id="exp-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional" />
+                <Input id="exp-desc" {...register("description")} placeholder="Optional" />
+                {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="exp-amt">Amount</Label>
-                  <Input id="exp-amt" type="number" min="1" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} required />
+                  <Input id="exp-amt" type="number" min="1" {...register("amount", { valueAsNumber: true })} />
+                  {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label>Category</Label>
-                  <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v })}>
+                  <Select value={watch("category")} onValueChange={(v) => v && setValue("category", v)}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {categories.map((c) => <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>)}
                     </SelectContent>
                   </Select>
+                  {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="exp-date">Date</Label>
-                <Input id="exp-date" type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })} />
+                <Input id="exp-date" type="date" {...register("date")} />
+                {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
               </div>
               {create.isError && <p className="text-sm text-danger">Failed to add expense.</p>}
               <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Adding..." : "Add Expense"}</Button>
@@ -126,7 +158,11 @@ export default function ExpensesPage() {
           ) : (
             <div className="divide-y">
               {expenses.map((ex) => (
-                <div key={ex.id} className="flex items-center gap-4 p-4">
+                <button
+                  key={ex.id}
+                  onClick={() => { setDetailExpense(ex); setDetailOpen(true) }}
+                  className="flex w-full items-center gap-4 p-4 text-left hover:bg-muted/50 transition-colors"
+                >
                   <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${catColors[ex.category] ?? "bg-muted"}`}>
                     <Receipt className="h-5 w-5" />
                   </div>
@@ -137,17 +173,99 @@ export default function ExpensesPage() {
                   <div className="flex items-center gap-3">
                     <span className="text-sm font-semibold text-foreground">{formatCurrency(ex.amount)}</span>
                     {isManager && (
-                      <button onClick={() => del.mutate(ex.id)} className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors" title="Delete">
+                      <button onClick={(e) => { e.stopPropagation(); openEdit(ex) }} className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit">
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                    )}
+                    {isManager && (
+                      <button onClick={(e) => { e.stopPropagation(); del.mutate(ex.id) }} className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors" title="Delete">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     )}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Expense Detail Dialog */}
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Expense Details</DialogTitle></DialogHeader>
+          {detailExpense && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Title</p>
+                  <p className="text-sm font-medium text-foreground">{detailExpense.title}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Amount</p>
+                  <p className="text-sm font-medium text-foreground">{formatCurrency(detailExpense.amount)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Category</p>
+                  <p className="text-sm font-medium text-foreground">{detailExpense.category.replace("_", " ")}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Date</p>
+                  <p className="text-sm font-medium text-foreground">{fmtDate(detailExpense.date)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Recorded by</p>
+                  <p className="text-sm font-medium text-foreground">{detailExpense.recorder.name}</p>
+                </div>
+                {detailExpense.description && (
+                  <div className="col-span-2">
+                    <p className="text-xs text-muted-foreground">Description</p>
+                    <p className="text-sm text-foreground">{detailExpense.description}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Expense Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit Expense</DialogTitle></DialogHeader>
+          <form onSubmit={hEdit(onEditSubmit)} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-exp-title">Title</Label>
+              <Input id="edit-exp-title" {...rEdit("title")} />
+              {eErrors.title && <p className="text-xs text-destructive">{eErrors.title.message}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-exp-desc">Description</Label>
+              <Input id="edit-exp-desc" {...rEdit("description")} />
+              {eErrors.description && <p className="text-xs text-destructive">{eErrors.description.message}</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-exp-amt">Amount</Label>
+                <Input id="edit-exp-amt" type="number" min="1" {...rEdit("amount", { valueAsNumber: true })} />
+                {eErrors.amount && <p className="text-xs text-destructive">{eErrors.amount.message}</p>}
+              </div>
+              <div className="space-y-2">
+                <Label>Category</Label>
+                <Select value={wEdit("category")} onValueChange={(v) => v && setEditVal("category", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {eErrors.category && <p className="text-xs text-destructive">{eErrors.category.message}</p>}
+              </div>
+            </div>
+            {update.isError && <p className="text-sm text-danger">Failed to update expense.</p>}
+            <Button type="submit" className="w-full" disabled={update.isPending}>{update.isPending ? "Updating..." : "Update Expense"}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

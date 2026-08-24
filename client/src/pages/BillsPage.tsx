@@ -1,9 +1,12 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { billApi } from "@/services"
 import type { MonthlyBill } from "@/types/api"
 import type { BillSettlement } from "@/services/bill.service"
+import { finalizeBillSchema, type FinalizeBillFormData } from "@/features/bills/validations/finalize-bill.schema"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,8 +52,12 @@ export default function BillsPage() {
 
   const [selectedBill, setSelectedBill] = useState<MonthlyBill | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [month, setMonth] = useState(String(new Date().getMonth() + 1))
-  const [year, setYear] = useState(String(new Date().getFullYear()))
+
+  const { register, handleSubmit, setValue, watch, reset, formState: { errors } } = useForm<FinalizeBillFormData>({
+    resolver: zodResolver(finalizeBillSchema),
+    defaultValues: { month: new Date().getMonth() + 1, year: new Date().getFullYear() },
+  })
+  const monthVal = watch("month")
 
   const { data, isLoading } = useQuery({
     queryKey: ["mess-bills", messId],
@@ -65,13 +72,12 @@ export default function BillsPage() {
   })
 
   const finalize = useMutation({
-    mutationFn: () =>
-      billApi.finalize(messId!, { month: parseInt(month), year: parseInt(year) }),
+    mutationFn: (data: FinalizeBillFormData) =>
+      billApi.finalize(messId!, { month: data.month, year: data.year }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["mess-bills", messId] })
       setDialogOpen(false)
-      setMonth(String(new Date().getMonth() + 1))
-      setYear(String(new Date().getFullYear()))
+      reset({ month: new Date().getMonth() + 1, year: new Date().getFullYear() })
     },
   })
 
@@ -220,10 +226,7 @@ export default function BillsPage() {
               <DialogTitle>Finalize Month</DialogTitle>
             </DialogHeader>
             <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                finalize.mutate()
-              }}
+              onSubmit={handleSubmit((data) => finalize.mutate(data))}
               className="space-y-4"
             >
               <div className="rounded-md bg-warning/10 p-3 text-sm text-warning flex items-start gap-2">
@@ -232,7 +235,7 @@ export default function BillsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Month</Label>
-                  <Select value={month} onValueChange={setMonth}>
+                  <Select value={String(monthVal)} onValueChange={(v) => v && setValue("month", parseInt(v), { shouldValidate: true })}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -244,6 +247,9 @@ export default function BillsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {errors.month && (
+                    <p className="text-xs text-destructive">{errors.month.message}</p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="bill-year">Year</Label>
@@ -252,9 +258,11 @@ export default function BillsPage() {
                     type="number"
                     min="2020"
                     max="2099"
-                    value={year}
-                    onChange={(e) => setYear(e.target.value)}
+                    {...register("year", { valueAsNumber: true })}
                   />
+                  {errors.year && (
+                    <p className="text-xs text-destructive">{errors.year.message}</p>
+                  )}
                 </div>
               </div>
               {finalize.isError && (

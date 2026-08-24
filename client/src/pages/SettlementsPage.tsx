@@ -1,137 +1,104 @@
 import { useState } from "react"
 import { useParams } from "react-router-dom"
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { settlementApi } from "@/services"
-import type { SettlementWithBill } from "@/services/settlement.service"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Receipt, CreditCard } from "lucide-react"
+import { CheckCircle, DollarSign } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
+import { useMySettlements, usePaySettlement } from "@/features/settlements/hooks/useSettlements"
+import { paySettlementSchema, type PaySettlementFormData } from "@/features/settlements/validations/pay-settlement.schema"
+import type { SettlementWithBill } from "@/services/settlement.service"
 
-const months = ["January","February","March","April","May","June","July","August","September","October","November","December"]
-
-const statusStyles: Record<string, string> = {
-  PAID: "bg-success/10 text-success",
-  PARTIAL: "bg-warning/10 text-warning",
-  UNPAID: "bg-danger/10 text-danger",
+const methods = ["CASH", "BANK", "MOBILE_BANKING", "OTHER"]
+const methodLabels: Record<string, string> = {
+  CASH: "Cash", BANK: "Bank Transfer", MOBILE_BANKING: "Mobile Banking", OTHER: "Other",
 }
+
+const fmtDate = (d: string) =>
+  new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 
 export default function SettlementsPage() {
   const { messId } = useParams<{ messId: string }>()
-  const qc = useQueryClient()
+  const mid = messId!
   const [payOpen, setPayOpen] = useState(false)
   const [activeSettlement, setActiveSettlement] = useState<SettlementWithBill | null>(null)
-  const [payAmount, setPayAmount] = useState("")
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["my-settlements", messId],
-    queryFn: () => settlementApi.getMy(messId!),
-    enabled: !!messId,
+  const { data, isLoading } = useMySettlements(mid)
+  const pay = usePaySettlement(mid)
+
+  const settlements: SettlementWithBill[] = data?.settlements ?? []
+
+  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<PaySettlementFormData>({
+    resolver: zodResolver(paySettlementSchema),
+    defaultValues: { amount: 0, method: "CASH" },
   })
-
-  const pay = useMutation({
-    mutationFn: () => settlementApi.pay(messId!, activeSettlement!.id, { amount: parseFloat(payAmount) }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["my-settlements", messId] })
-      setPayOpen(false)
-      setActiveSettlement(null)
-      setPayAmount("")
-    },
-  })
-
-  const settlements: SettlementWithBill[] = (data?.settlements as SettlementWithBill[]) ?? []
 
   function openPayDialog(s: SettlementWithBill) {
     setActiveSettlement(s)
-    setPayAmount(String(s.dueAmount))
+    reset({ amount: s.dueAmount, method: "CASH" })
     setPayOpen(true)
+  }
+
+  function onSubmit(data: PaySettlementFormData) {
+    if (!activeSettlement) return
+    pay.mutate({ settlementId: activeSettlement.id, data: { amount: data.amount, method: data.method } }, {
+      onSuccess: () => { reset(); setActiveSettlement(null); setPayOpen(false) },
+    })
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">My Settlements</h1>
-      </div>
+      <h1 className="text-2xl font-semibold text-foreground">Settlements</h1>
 
       <Card>
         <CardContent className="p-0">
+          <div className="border-b px-4 py-3">
+            <h2 className="text-sm font-semibold text-foreground">My Settlements</h2>
+          </div>
           {isLoading ? (
             <div className="divide-y">
-              {[1, 2, 3].map((i) => (
+              {[1, 2].map((i) => (
                 <div key={i} className="flex items-center gap-4 p-4">
                   <Skeleton className="h-10 w-10 rounded-lg" />
-                  <div className="flex-1 space-y-1">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-3 w-48" />
-                  </div>
-                  <Skeleton className="h-4 w-20" />
+                  <div className="flex-1 space-y-1"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-48" /></div>
+                  <Skeleton className="h-8 w-20" />
                 </div>
               ))}
             </div>
           ) : settlements.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Receipt className="h-10 w-10 text-muted-foreground mb-3" />
-              <p className="text-sm font-medium text-foreground">No settlements yet</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Settlements will appear once a bill is generated
-              </p>
+              <CheckCircle className="h-10 w-10 text-success mb-3" />
+              <p className="text-sm font-medium text-foreground">All settled up</p>
+              <p className="text-xs text-muted-foreground mt-1">No pending settlements</p>
             </div>
           ) : (
             <div className="divide-y">
               {settlements.map((s) => (
-                <div key={s.id} className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-                        <Receipt className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {months[s.bill.month - 1]} {s.bill.year}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          Meal count: {s.mealCount} &middot; Rate: {formatCurrency(s.bill.mealRate)}
-                        </p>
-                      </div>
-                    </div>
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[s.status] ?? "bg-muted text-muted-foreground"}`}>
-                      {s.status}
-                    </span>
+                <div key={s.id} className="flex items-center gap-4 p-4">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-warning/10">
+                    <DollarSign className="h-5 w-5 text-warning" />
                   </div>
-
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div>
-                      <p className="text-xs text-muted-foreground">Meal Cost</p>
-                      <p className="font-medium text-foreground">{formatCurrency(s.mealCost)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Expense Share</p>
-                      <p className="font-medium text-foreground">{formatCurrency(s.expenseShare)}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground">Total</p>
-                      <p className="font-medium text-foreground">{formatCurrency(s.totalAmount)}</p>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Bill {s.bill.month}/{s.bill.year}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {s.mealCount} meals &middot; {fmtDate(s.createdAt)}
+                    </p>
                   </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 text-sm">
-                      <span className="text-muted-foreground">
-                        Paid: <span className="font-medium text-foreground">{formatCurrency(s.paidAmount)}</span>
-                      </span>
-                      <span className="text-muted-foreground">
-                        Due: <span className="font-medium text-danger">{formatCurrency(s.dueAmount)}</span>
-                      </span>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-foreground">{formatCurrency(s.totalAmount)}</p>
+                      <p className="text-xs text-muted-foreground">Due: {formatCurrency(s.dueAmount)}</p>
                     </div>
                     {s.dueAmount > 0 && (
-                      <Button size="sm" className="gap-2" onClick={() => openPayDialog(s)}>
-                        <CreditCard className="h-4 w-4" />
-                        Pay
-                      </Button>
+                      <Button size="sm" onClick={() => openPayDialog(s)}>Pay</Button>
                     )}
                   </div>
                 </div>
@@ -141,41 +108,33 @@ export default function SettlementsPage() {
         </CardContent>
       </Card>
 
+      {/* Pay Settlement Dialog */}
       <Dialog open={payOpen} onOpenChange={setPayOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Make a Payment</DialogTitle>
-          </DialogHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              pay.mutate()
-            }}
-            className="space-y-4"
-          >
-            {activeSettlement && (
-              <p className="text-sm text-muted-foreground">
-                {months[activeSettlement.bill.month - 1]} {activeSettlement.bill.year} &middot; Due: {formatCurrency(activeSettlement.dueAmount)}
-              </p>
-            )}
+          <DialogHeader><DialogTitle>Pay Settlement</DialogTitle></DialogHeader>
+          {activeSettlement && (
+            <div className="mb-4 rounded-lg bg-muted p-3 text-sm">
+              <p className="text-muted-foreground">Bill {activeSettlement.bill.month}/{activeSettlement.bill.year} &middot; Due: <strong className="text-foreground">{formatCurrency(activeSettlement.dueAmount)}</strong></p>
+            </div>
+          )}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="pay-amount">Amount</Label>
-              <Input
-                id="pay-amount"
-                type="number"
-                min="1"
-                max={activeSettlement?.dueAmount}
-                value={payAmount}
-                onChange={(e) => setPayAmount(e.target.value)}
-                required
-              />
+              <Input id="pay-amount" type="number" min="1" {...register("amount", { valueAsNumber: true })} />
+              {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
             </div>
-            {pay.isError && (
-              <p className="text-sm text-danger">Failed to process payment.</p>
-            )}
-            <Button type="submit" className="w-full" disabled={pay.isPending}>
-              {pay.isPending ? "Processing..." : "Submit Payment"}
-            </Button>
+            <div className="space-y-2">
+              <Label>Payment Method</Label>
+              <Select value={watch("method")} onValueChange={(v) => v && setValue("method", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {methods.map((m) => <SelectItem key={m} value={m}>{methodLabels[m]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {errors.method && <p className="text-xs text-destructive">{errors.method.message}</p>}
+            </div>
+            {pay.isError && <p className="text-sm text-danger">Failed to process payment.</p>}
+            <Button type="submit" className="w-full" disabled={pay.isPending}>{pay.isPending ? "Processing..." : "Pay Now"}</Button>
           </form>
         </DialogContent>
       </Dialog>

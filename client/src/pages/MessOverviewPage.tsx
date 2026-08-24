@@ -1,9 +1,12 @@
 import { useState } from "react"
 import { useParams, useNavigate } from "react-router-dom"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery } from "@tanstack/react-query"
 import { messApi, billApi } from "@/services"
 import { useMess, useUpdateMess, useDeleteMess } from "@/features/mess/hooks/useMess"
 import { useAuth } from "@/hooks/useAuth"
+import { updateMessSchema, type UpdateMessFormData } from "@/features/mess/validations/update-mess.schema"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,7 +27,11 @@ export default function MessOverviewPage() {
   const { user } = useAuth()
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [editForm, setEditForm] = useState({ name: "", description: "", address: "" })
+
+  const { register, handleSubmit, reset, formState: { errors } } = useForm<UpdateMessFormData>({
+    resolver: zodResolver(updateMessSchema),
+    defaultValues: { name: "", description: "", address: "" },
+  })
 
   const { data: mess, isLoading: messLoading } = useMess(messId!)
   const { data: membersData, isLoading: membersLoading } = useQuery({
@@ -64,7 +71,7 @@ export default function MessOverviewPage() {
               <DialogTrigger
                 render={
                   <Button variant="outline" size="sm" onClick={() => {
-                    setEditForm({ name: mess?.name ?? "", description: mess?.description ?? "", address: mess?.address ?? "" })
+                    reset({ name: mess?.name ?? "", description: mess?.description ?? "", address: mess?.address ?? "" })
                   }} />
                 }
               >
@@ -76,36 +83,31 @@ export default function MessOverviewPage() {
                   <DialogTitle>Edit Mess</DialogTitle>
                 </DialogHeader>
                 <form
-                  onSubmit={(e) => {
-                    e.preventDefault()
-                    updateMess.mutate(editForm, { onSuccess: () => setEditOpen(false) })
-                  }}
+                  onSubmit={handleSubmit((data) => {
+                    updateMess.mutate(data, { onSuccess: () => setEditOpen(false) })
+                  })}
                   className="space-y-4"
                 >
                   <div className="space-y-2">
                     <Label htmlFor="edit-name">Name</Label>
-                    <Input
-                      id="edit-name"
-                      value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                      required
-                    />
+                    <Input id="edit-name" {...register("name")} />
+                    {errors.name && (
+                      <p className="text-xs text-destructive">{errors.name.message}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-desc">Description</Label>
-                    <Input
-                      id="edit-desc"
-                      value={editForm.description}
-                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                    />
+                    <Input id="edit-desc" {...register("description")} />
+                    {errors.description && (
+                      <p className="text-xs text-destructive">{errors.description.message}</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="edit-addr">Address</Label>
-                    <Input
-                      id="edit-addr"
-                      value={editForm.address}
-                      onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
-                    />
+                    <Input id="edit-addr" {...register("address")} />
+                    {errors.address && (
+                      <p className="text-xs text-destructive">{errors.address.message}</p>
+                    )}
                   </div>
                   <Button type="submit" disabled={updateMess.isPending}>
                     {updateMess.isPending ? "Saving..." : "Save Changes"}
