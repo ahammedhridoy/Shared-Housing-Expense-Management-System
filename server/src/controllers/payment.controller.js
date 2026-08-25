@@ -9,7 +9,7 @@ import {
 export const addPaymentController = async (req, res, next) => {
   try {
     const { messId } = req.params;
-    const { payerId, amount, date, method, note } = req.body;
+    const { payerId, amount, date, note } = req.body;
 
     const payment = await addPayment({
       userId: req.user.userId,
@@ -17,8 +17,8 @@ export const addPaymentController = async (req, res, next) => {
       payerId,
       amount,
       date,
-      method,
       note,
+      recordedBy: req.user.userId,
     });
 
     res.status(201).json({
@@ -34,14 +34,13 @@ export const addPaymentController = async (req, res, next) => {
 export const getPaymentsController = async (req, res, next) => {
   try {
     const { messId } = req.params;
-    const { startDate, endDate, method } = req.query;
+    const { startDate, endDate } = req.query;
 
     const payments = await getPayments({
       userId: req.user.userId,
       messId,
       startDate,
       endDate,
-      method,
     });
 
     res.status(200).json({
@@ -77,7 +76,7 @@ export const getPaymentByIdController = async (req, res, next) => {
 export const updatePaymentController = async (req, res, next) => {
   try {
     const { messId, paymentId } = req.params;
-    const { payerId, amount, date, method, note } = req.body;
+    const { payerId, amount, date, note } = req.body;
 
     const payment = await updatePayment({
       userId: req.user.userId,
@@ -86,7 +85,6 @@ export const updatePaymentController = async (req, res, next) => {
       payerId,
       amount,
       date,
-      method,
       note,
     });
 

@@ -6,7 +6,6 @@ export const createPaymentSchema = z.object({
     .number("Amount must be a number")
     .min(1, "Amount must be at least 1"),
   date: z.string().min(1, "Date is required"),
-  method: z.string().min(1, "Payment method is required"),
   note: z
     .string()
     .max(200, "Note must be 200 characters or less")
@@ -19,9 +18,8 @@ export type CreatePaymentFormData = z.infer<typeof createPaymentSchema>
 export const updatePaymentSchema = z.object({
   amount: z
     .number("Amount must be a number")
-    .min(1, "Amount must be at least 1"),
-  date: z.string().min(1, "Date is required"),
-  method: z.string().min(1, "Payment method is required"),
+    .min(1, "Amount must be at least 1")
+    .optional(),
   note: z
     .string()
     .max(200, "Note must be 200 characters or less")

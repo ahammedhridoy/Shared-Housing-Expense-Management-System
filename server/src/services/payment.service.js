@@ -1,10 +1,8 @@
 import prisma from "../config/database.js";
 import AppError from "../utils/AppError.js";
 
-const VALID_METHODS = ["CASH", "BANK", "MOBILE_BANKING", "OTHER"];
-
-// Add a payment (manager only)
-export const addPayment = async ({ userId, messId, payerId, amount, date, method, note }) => {
+// Add a payment (manager or Stripe auto-record)
+export const addPayment = async ({ userId, messId, payerId, amount, date, note, stripeCheckoutId, recordedBy }) => {
   const membership = await prisma.messMember.findUnique({
     where: {
       userId_messId: {
@@ -18,7 +16,8 @@ export const addPayment = async ({ userId, messId, payerId, amount, date, method
     throw new AppError("You are not a member of this mess", 403);
   }
 
-  if (membership.role !== "MANAGER") {
+  // If called by manager (not Stripe auto-record), verify manager role
+  if (!stripeCheckoutId && membership.role !== "MANAGER") {
     throw new AppError("Only mess managers can record payments", 403);
   }
 
@@ -49,32 +48,59 @@ export const addPayment = async ({ userId, messId, payerId, amount, date, method
     throw new AppError("Invalid payment date", 400);
   }
 
-  if (!method) {
-    throw new AppError("Payment method is required", 400);
-  }
-
-  if (!VALID_METHODS.includes(method)) {
-    throw new AppError(`Invalid payment method. Valid methods: ${VALID_METHODS.join(", ")}`, 400);
-  }
-
   const payment = await prisma.payment.create({
     data: {
       messId,
       userId: payerId,
-      recordedBy: userId,
+      recordedBy: recordedBy || null,
       amount,
       date: paymentDate,
-      method,
       note: note?.trim() || null,
+      stripeCheckoutId: stripeCheckoutId || null,
     },
     select: {
       id: true,
       messId: true,
       userId: true,
       recordedBy: true,
+      stripeCheckoutId: true,
       amount: true,
       date: true,
-      method: true,
+      note: true,
+      createdAt: true,
+      updatedAt: true,
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+      recorder: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  return payment;
+};
+
+// Get payment by Stripe checkout session ID
+export const getPaymentByStripeCheckoutId = async (stripeCheckoutId) => {
+  const payment = await prisma.payment.findUnique({
+    where: { stripeCheckoutId },
+    select: {
+      id: true,
+      messId: true,
+      userId: true,
+      recordedBy: true,
+      stripeCheckoutId: true,
+      amount: true,
+      date: true,
       note: true,
       createdAt: true,
       updatedAt: true,
@@ -99,7 +125,7 @@ export const addPayment = async ({ userId, messId, payerId, amount, date, method
 };
 
 // Get all payments of a mess (members only)
-export const getPayments = async ({ userId, messId, startDate, endDate, method }) => {
+export const getPayments = async ({ userId, messId, startDate, endDate }) => {
   const membership = await prisma.messMember.findUnique({
     where: {
       userId_messId: {
@@ -141,14 +167,6 @@ export const getPayments = async ({ userId, messId, startDate, endDate, method }
     }
   }
 
-  if (method) {
-    if (!VALID_METHODS.includes(method)) {
-      throw new AppError(`Invalid payment method. Valid methods: ${VALID_METHODS.join(", ")}`, 400);
-    }
-
-    where.method = method;
-  }
-
   const payments = await prisma.payment.findMany({
     where,
     select: {
@@ -156,9 +174,9 @@ export const getPayments = async ({ userId, messId, startDate, endDate, method }
       messId: true,
       userId: true,
       recordedBy: true,
+      stripeCheckoutId: true,
       amount: true,
       date: true,
-      method: true,
       note: true,
       createdAt: true,
       updatedAt: true,
@@ -210,9 +228,9 @@ export const getPaymentById = async ({ userId, messId, paymentId }) => {
       messId: true,
       userId: true,
       recordedBy: true,
+      stripeCheckoutId: true,
       amount: true,
       date: true,
-      method: true,
       note: true,
       createdAt: true,
       updatedAt: true,
@@ -241,7 +259,7 @@ export const getPaymentById = async ({ userId, messId, paymentId }) => {
 };
 
 // Update a payment (manager only)
-export const updatePayment = async ({ userId, messId, paymentId, payerId, amount, date, method, note }) => {
+export const updatePayment = async ({ userId, messId, paymentId, payerId, amount, date, note }) => {
   const membership = await prisma.messMember.findUnique({
     where: {
       userId_messId: {
@@ -297,16 +315,11 @@ export const updatePayment = async ({ userId, messId, paymentId, payerId, amount
     }
   }
 
-  if (method !== undefined && !VALID_METHODS.includes(method)) {
-    throw new AppError(`Invalid payment method. Valid methods: ${VALID_METHODS.join(", ")}`, 400);
-  }
-
   const updateData = {};
 
   if (payerId !== undefined) updateData.userId = payerId;
   if (amount !== undefined) updateData.amount = amount;
   if (date !== undefined) updateData.date = new Date(date);
-  if (method !== undefined) updateData.method = method;
   if (note !== undefined) updateData.note = note?.trim() || null;
 
   const updatedPayment = await prisma.payment.update({
@@ -319,9 +332,9 @@ export const updatePayment = async ({ userId, messId, paymentId, payerId, amount
       messId: true,
       userId: true,
       recordedBy: true,
+      stripeCheckoutId: true,
       amount: true,
       date: true,
-      method: true,
       note: true,
       createdAt: true,
       updatedAt: true,

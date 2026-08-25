@@ -1,7 +1,6 @@
 import { z } from "zod"
 
 export const logMealSchema = z.object({
-  userId: z.string().min(1, "Member is required"),
   date: z.string().min(1, "Date is required"),
   type: z.enum(["BREAKFAST", "LUNCH", "DINNER"], "Meal type is required"),
   quantity: z

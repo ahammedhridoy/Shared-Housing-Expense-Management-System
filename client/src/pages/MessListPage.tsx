@@ -78,17 +78,18 @@ export default function MessListPage() {
           ) : (
             <div className="divide-y">
               {(messes ?? []).map((mess) => (
-                <div key={mess.id} className="flex items-center gap-4 p-4">
-                  <Link
-                    to={`/mess/${mess.id}`}
-                    className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary font-semibold text-lg"
-                  >
+                <Link
+                  key={mess.id}
+                  to={`/mess/${mess.id}`}
+                  className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary font-semibold text-lg shrink-0">
                     {mess.name.charAt(0)}
-                  </Link>
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <Link to={`/mess/${mess.id}`} className="text-sm font-medium text-foreground hover:underline">
+                    <p className="text-sm font-medium text-foreground">
                       {mess.name}
-                    </Link>
+                    </p>
                     {(mess as any).address && (
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <MapPin className="h-3 w-3" />
@@ -97,13 +98,13 @@ export default function MessListPage() {
                     )}
                   </div>
                   <button
-                    onClick={() => { setConfirmDelete({ id: mess.id, name: mess.name }); setDeleteOpen(true) }}
-                    className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDelete({ id: mess.id, name: mess.name }); setDeleteOpen(true) }}
+                    className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors shrink-0"
                     title="Delete mess"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
-                </div>
+                </Link>
               ))}
             </div>
           )}

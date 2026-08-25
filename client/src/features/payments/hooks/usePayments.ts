@@ -18,6 +18,28 @@ export function usePaymentDetail(messId: string, paymentId: string | null) {
   })
 }
 
+export function useCreateCheckoutSession(messId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { amount: number; note?: string }) =>
+      paymentApi.createCheckoutSession(messId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["mess-payments", messId] })
+    },
+  })
+}
+
+export function useVerifyPayment() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { sessionId: string }) =>
+      paymentApi.verifyPayment(data),
+    onSuccess: (_payment, _variables, context) => {
+      qc.invalidateQueries({ queryKey: ["mess-payments"] })
+    },
+  })
+}
+
 export function useCreatePayment(messId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -31,7 +53,7 @@ export function useCreatePayment(messId: string) {
 export function useUpdatePaymentStatus(messId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ paymentId, data }: { paymentId: string; data: { amount?: number; method?: string; note?: string; status?: string } }) =>
+    mutationFn: ({ paymentId, data }: { paymentId: string; data: { amount?: number; note?: string } }) =>
       paymentApi.updateStatus(messId, paymentId, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["mess-payments", messId] })

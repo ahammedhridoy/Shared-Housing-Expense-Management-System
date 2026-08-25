@@ -18,8 +18,8 @@ import { Button } from "@/components/ui/button"
 
 const mainNav = [
   { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-  { to: "/mess", icon: Home, label: "My Messes" },
   { to: "/profile", icon: User, label: "Profile" },
+  { to: "/mess", icon: Home, label: "My Messes" },
 ]
 
 const messNav = [

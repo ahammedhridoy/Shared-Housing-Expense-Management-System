@@ -31,7 +31,7 @@ export default function MembersPage() {
   const cancelInvitation = useCancelInvitation()
 
   const members = membersData?.members ?? []
-  const pendingInvitations = invitations ?? []
+  const pendingInvitations = invitations?.filter((inv) => inv.status === "PENDING") ?? []
   const isManager = members.some((m) => m.user.id === user?.id && m.role === "MANAGER")
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<InviteMemberFormData>({

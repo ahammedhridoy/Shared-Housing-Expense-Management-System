@@ -121,10 +121,10 @@ export interface Payment {
   id: string
   messId: string
   userId: string
-  recordedBy: string
+  recordedBy: string | null
+  stripeCheckoutId: string | null
   amount: number
   date: string
-  method: string
   note: string | null
   createdAt: string
   updatedAt: string
@@ -134,8 +134,16 @@ export interface CreatePaymentInput {
   payerId: string
   amount: number
   date: string
-  method: string
   note?: string
+}
+
+export interface CheckoutSessionResponse {
+  sessionId: string
+  url: string
+}
+
+export interface VerifyPaymentInput {
+  sessionId: string
 }
 
 // MonthlyBill specific — matches backend Prisma select

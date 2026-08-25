@@ -1,9 +1,9 @@
 import api from "@/lib/api"
-import type { ApiResponse, CreatePaymentInput, Payment } from "@/types/api"
+import type { ApiResponse, CreatePaymentInput, Payment, CheckoutSessionResponse, VerifyPaymentInput } from "@/types/api"
 
 export interface PaymentWithRelations extends Payment {
   user: { id: string; name: string; email: string }
-  recorder: { id: string; name: string; email: string }
+  recorder: { id: string; name: string; email: string } | null
 }
 
 export interface PaginatedPayments {
@@ -12,6 +12,22 @@ export interface PaginatedPayments {
 }
 
 export const paymentApi = {
+  createCheckoutSession: async (messId: string, data: { amount: number; note?: string }) => {
+    const response = await api.post<ApiResponse<CheckoutSessionResponse>>(
+      `/mess/${messId}/payments/checkout`,
+      data
+    )
+    return response.data.data
+  },
+
+  verifyPayment: async (data: VerifyPaymentInput) => {
+    const response = await api.post<ApiResponse<{ payment: PaymentWithRelations }>>(
+      `/payments/verify`,
+      data
+    )
+    return response.data.data.payment
+  },
+
   create: async (messId: string, data: CreatePaymentInput) => {
     const response = await api.post<ApiResponse<{ payment: PaymentWithRelations }>>(
       `/mess/${messId}/payments`,
@@ -37,7 +53,7 @@ export const paymentApi = {
   updateStatus: async (
     messId: string,
     paymentId: string,
-    data: { amount?: number; method?: string; note?: string; status?: string }
+    data: { amount?: number; note?: string }
   ) => {
     const response = await api.put<ApiResponse<{ payment: PaymentWithRelations }>>(
       `/mess/${messId}/payments/${paymentId}`,
