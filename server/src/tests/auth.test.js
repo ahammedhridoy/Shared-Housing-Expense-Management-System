@@ -224,7 +224,7 @@ describe("GET /api/v1/auth/me", () => {
     expect(res.body.success).toBe(true);
     expect(res.body.message).toBe("Authenticated user");
     expect(res.body.data.user).toBeDefined();
-    expect(res.body.data.user.userId).toBeDefined();
+    expect(res.body.data.user.id).toBeDefined();
   });
 
   it("should return current user with Authorization header", async () => {

@@ -88,10 +88,7 @@ describe("POST /api/v1/mess (createMess)", () => {
       .send({ name: "Manager Role Mess" });
 
     expect(res.status).toBe(201);
-    const memberships = res.body.data.mess.memberships;
-    expect(memberships).toHaveLength(1);
-    expect(memberships[0].role).toBe("MANAGER");
-    expect(memberships[0].userId).toBe(manager.id);
+    expect(res.body.data.mess.role).toBe("MANAGER");
     testMessId = res.body.data.mess.id;
   });
 
@@ -397,7 +394,7 @@ describe("GET /api/v1/mess/:messId/members (getMessMembers)", () => {
     expect(mgrMember.user.email).toBe(managerData.email);
   });
 
-  it("should include role and createdAt in each member", async () => {
+  it("should include role, rent and joinedAt in each member", async () => {
     const res = await request(app)
       .get(`/api/v1/mess/${memberMessId}/members`)
       .set("Cookie", managerCookies);
@@ -405,7 +402,8 @@ describe("GET /api/v1/mess/:messId/members (getMessMembers)", () => {
     expect(res.status).toBe(200);
     res.body.data.members.forEach((m) => {
       expect(m).toHaveProperty("role");
-      expect(m).toHaveProperty("createdAt");
+      expect(m).toHaveProperty("joinedAt");
+      expect(m).toHaveProperty("rentAmount");
       expect(m).toHaveProperty("user");
     });
   });
@@ -559,14 +557,14 @@ describe("PATCH /api/v1/mess/:messId (updateMess)", () => {
     expect(res.body.success).toBe(false);
   });
 
-  it("should return 404 for non-existent messId", async () => {
+  it("should return 403 for a mess the user does not manage", async () => {
     const fakeId = "000000000000000000000000";
     const res = await request(app)
       .patch(`/api/v1/mess/${fakeId}`)
       .set("Cookie", managerCookies)
       .send({ name: "Test" });
 
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
   });
 });

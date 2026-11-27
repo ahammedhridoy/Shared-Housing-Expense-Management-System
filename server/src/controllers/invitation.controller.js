@@ -5,6 +5,7 @@ import {
   acceptInvitation,
   cancelInvitation,
   rejectInvitation,
+  getInvitationByToken,
 } from "../services/invitation.service.js";
 
 export const createInvitationController = async (req, res, next) => {
@@ -20,7 +21,7 @@ export const createInvitationController = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: "Invitation created successfully",
+      message: invitation.emailSent ? "Invitation sent" : "Invitation created",
       data: { invitation },
     });
   } catch (error) {
@@ -111,6 +112,14 @@ export const rejectInvitationController = async (req, res, next) => {
       success: true,
       message: result.message,
     });
+  } catch (error) {
+    next(error);
+  }
+};
+export const getInvitationByTokenController = async (req, res, next) => {
+  try {
+    const invitation = await getInvitationByToken(req.params.token);
+    res.status(200).json({ success: true, message: "Invitation fetched", data: { invitation } });
   } catch (error) {
     next(error);
   }

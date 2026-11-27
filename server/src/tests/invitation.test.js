@@ -109,7 +109,7 @@ describe("POST /api/v1/invitations/mess/:messId (create invitation)", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
-    expect(res.body.message).toBe("Invitation created successfully");
+    expect(res.body.message).toMatch(/^Invitation (sent|created)$/);
     expect(res.body.data.invitation).toMatchObject({
       messId,
       email: inviteeData.email.toLowerCase(),

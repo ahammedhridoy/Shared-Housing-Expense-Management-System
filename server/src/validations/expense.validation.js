@@ -1,90 +1,53 @@
 import { z } from "zod";
+import { objectId, day, money, monthNum, yearNum } from "./common.js";
 
-const objectId = z.string().regex(/^[0-9a-f]{24}$/i, "Invalid ID format");
+export const MEAL_CATEGORIES = ["BAZAR"];
+export const HOUSE_CATEGORIES = ["ELECTRICITY", "GAS", "WATER", "INTERNET", "MAID", "SERVICE", "OTHER"];
 
-const expenseCategoryEnum = z.enum(
-  [
-    "FOOD",
-    "RENT",
-    "ELECTRICITY",
-    "GAS",
-    "WATER",
-    "INTERNET",
-    "MAINTENANCE",
-    "MAID_COST",
-    "OTHER",
-  ],
-  {
-    errorMap: () => ({ message: "Invalid expense category" }),
-  }
-);
+const kindEnum = z.enum(["MEAL", "HOUSE"], { error: "Kind must be MEAL or HOUSE" });
+const categoryEnum = z.enum([...MEAL_CATEGORIES, ...HOUSE_CATEGORIES], {
+  error: "Invalid expense category",
+});
+
+const shares = z
+  .array(z.object({ userId: objectId, amount: z.number().min(0, "Share cannot be negative") }))
+  .max(100);
+
+const base = {
+  title: z.string().trim().min(1, "Title is required").max(200, "Title must be at most 200 characters"),
+  description: z.string().trim().max(500, "Description must be at most 500 characters").optional().nullable(),
+  amount: money,
+  date: day,
+  // null = paid from the mess fund
+  paidById: objectId.nullable().optional(),
+  shares: shares.optional(),
+};
 
 export const addExpenseSchema = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(1, "Expense title is required")
-    .max(200, "Title must be at most 200 characters"),
-  description: z
-    .string()
-    .trim()
-    .max(500, "Description must be at most 500 characters")
-    .optional()
-    .nullable(),
-  amount: z
-    .number()
-    .positive("Amount must be greater than 0")
-    .max(99999999.99, "Amount is too large"),
-  category: expenseCategoryEnum,
-  date: z
-    .string()
-    .min(1, "Expense date is required")
-    .datetime("Date must be a valid ISO 8601 datetime"),
+  kind: kindEnum,
+  category: categoryEnum,
+  ...base,
 });
 
 export const updateExpenseSchema = z
   .object({
-    title: z
-      .string()
-      .trim()
-      .min(1, "Title cannot be empty")
-      .max(200, "Title must be at most 200 characters")
-      .optional(),
-    description: z
-      .string()
-      .trim()
-      .max(500, "Description must be at most 500 characters")
-      .optional()
-      .nullable(),
-    amount: z
-      .number()
-      .positive("Amount must be greater than 0")
-      .max(99999999.99, "Amount is too large")
-      .optional(),
-    category: expenseCategoryEnum.optional(),
-    date: z
-      .string()
-      .datetime("Date must be a valid ISO 8601 datetime")
-      .optional(),
+    kind: kindEnum.optional(),
+    category: categoryEnum.optional(),
+    title: base.title.optional(),
+    description: base.description,
+    amount: money.optional(),
+    date: day.optional(),
+    paidById: base.paidById,
+    shares: base.shares,
   })
   .refine((data) => Object.keys(data).length > 0, {
     message: "At least one field must be provided for update",
   });
 
 export const expenseQuerySchema = z.object({
-  startDate: z
-    .string()
-    .datetime("Start date must be a valid ISO 8601 datetime")
-    .optional(),
-  endDate: z
-    .string()
-    .datetime("End date must be a valid ISO 8601 datetime")
-    .optional(),
-  category: expenseCategoryEnum.optional(),
-});
-
-export const expenseMessIdParamSchema = z.object({
-  messId: objectId,
+  month: monthNum,
+  year: yearNum,
+  kind: kindEnum.optional(),
 });
 
 export const expenseIdParamSchema = z.object({

@@ -2,6 +2,47 @@ import crypto from "node:crypto";
 
 import prisma from "../config/database.js";
 import AppError from "../utils/AppError.js";
+import { sendEmail } from "../utils/email.js";
+
+const INVITE_TTL_DAYS = 7;
+
+const clientUrl = () => (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+export const inviteUrl = (token) => `${clientUrl()}/invite/${token}`;
+
+const escapeHtml = (s = "") =>
+  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// Pending invitations past their expiry are marked EXPIRED so they stop
+// blocking a new invite and stop showing up as pending.
+const expireStale = (where) =>
+  prisma.invitation.updateMany({
+    where: { ...where, status: "PENDING", expiresAt: { lte: new Date() } },
+    data: { status: "EXPIRED" },
+  });
+
+const sendInvitationEmail = async ({ email, token, messName, inviterName, expiresAt }) => {
+  // Tests create many invitations; never hit SMTP from them
+  if (process.env.NODE_ENV === "test") return false;
+
+  try {
+    const url = inviteUrl(token);
+    await sendEmail({
+      to: email,
+      subject: `${inviterName} invited you to join ${messName}`,
+      html: `
+        <h2>You're invited to ${escapeHtml(messName)}</h2>
+        <p>${escapeHtml(inviterName)} added you to the mess <b>${escapeHtml(messName)}</b> to share meals, bazar and house bills.</p>
+        <p><a href="${url}">Open the invitation</a></p>
+        <p>Sign up or log in with <b>${escapeHtml(email)}</b> to join. This invitation expires on ${expiresAt.toDateString()}.</p>
+      `,
+    });
+    return true;
+  } catch (error) {
+    // The invitation still exists and can be shared by link
+    console.error("Invitation email failed:", error.message);
+    return false;
+  }
+};
 
 export const createInvitation = async ({ messId, invitedBy, email }) => {
   const normalizedEmail = email.trim().toLowerCase();
@@ -22,10 +63,12 @@ export const createInvitation = async ({ messId, invitedBy, email }) => {
       },
     });
 
-    if (existingMembership) {
+    if (existingMembership?.isActive) {
       throw new AppError("This user is already a member of the mess", 409);
     }
   }
+
+  await expireStale({ messId, email: normalizedEmail });
 
   const existingInvitation = await prisma.invitation.findFirst({
     where: {
@@ -41,7 +84,7 @@ export const createInvitation = async ({ messId, invitedBy, email }) => {
 
   const token = crypto.randomBytes(32).toString("hex");
 
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
 
   const invitation = await prisma.invitation.create({
     data: {
@@ -58,10 +101,44 @@ export const createInvitation = async ({ messId, invitedBy, email }) => {
       status: true,
       expiresAt: true,
       createdAt: true,
+      mess: { select: { name: true } },
+      inviter: { select: { name: true } },
     },
   });
 
-  return invitation;
+  const emailSent = await sendInvitationEmail({
+    email: normalizedEmail,
+    token,
+    messName: invitation.mess.name,
+    inviterName: invitation.inviter.name,
+    expiresAt,
+  });
+
+  const { mess, inviter, ...rest } = invitation;
+  return { ...rest, inviteUrl: inviteUrl(token), emailSent };
+};
+
+// Public preview for the invite link: enough to show "X invited you to Y".
+// The token is 32 random bytes, so knowing it is the permission.
+export const getInvitationByToken = async (token) => {
+  const invitation = await prisma.invitation.findUnique({
+    where: { token },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      expiresAt: true,
+      mess: { select: { id: true, name: true, address: true } },
+      inviter: { select: { name: true } },
+    },
+  });
+
+  if (!invitation) {
+    throw new AppError("This invitation link is not valid", 404);
+  }
+
+  const expired = invitation.status === "PENDING" && invitation.expiresAt <= new Date();
+  return { ...invitation, status: expired ? "EXPIRED" : invitation.status };
 };
 
 export const getPendingInvitations = async (userId) => {
@@ -118,9 +195,11 @@ export const getMessInvitations = async ({ messId, userId }) => {
     },
   });
 
-  if (!membership) {
+  if (!membership || !membership.isActive) {
     throw new AppError("You are not a member of this mess", 403);
   }
+
+  await expireStale({ messId });
 
   const invitations = await prisma.invitation.findMany({
     where: { messId },
@@ -128,6 +207,7 @@ export const getMessInvitations = async ({ messId, userId }) => {
       id: true,
       email: true,
       status: true,
+      token: true,
       expiresAt: true,
       createdAt: true,
       inviter: {
@@ -141,7 +221,8 @@ export const getMessInvitations = async ({ messId, userId }) => {
     orderBy: { createdAt: "desc" },
   });
 
-  return invitations;
+  // Only managers reach this; they get a shareable link instead of the raw token
+  return invitations.map(({ token, ...inv }) => ({ ...inv, inviteUrl: inviteUrl(token) }));
 };
 
 export const acceptInvitation = async ({ invitationId, userId }) => {
@@ -187,18 +268,24 @@ export const acceptInvitation = async ({ invitationId, userId }) => {
     },
   });
 
-  if (existingMembership) {
+  if (existingMembership?.isActive) {
     throw new AppError("You are already a member of this mess", 409);
   }
 
   const result = await prisma.$transaction(async (tx) => {
-    const membership = await tx.messMember.create({
-      data: {
-        userId,
-        messId: invitation.messId,
-        role: "MEMBER",
-      },
-    });
+    // A former member who is invited back is reactivated
+    const membership = existingMembership
+      ? await tx.messMember.update({
+          where: { id: existingMembership.id },
+          data: { isActive: true, leftAt: null, joinedAt: new Date(), role: "MEMBER" },
+        })
+      : await tx.messMember.create({
+          data: {
+            userId,
+            messId: invitation.messId,
+            role: "MEMBER",
+          },
+        });
 
     await tx.invitation.update({
       where: { id: invitation.id },
@@ -229,7 +316,7 @@ export const cancelInvitation = async ({ invitationId, userId }) => {
     },
   });
 
-  if (!membership) {
+  if (!membership || !membership.isActive) {
     throw new AppError("You are not a member of this mess", 403);
   }
 

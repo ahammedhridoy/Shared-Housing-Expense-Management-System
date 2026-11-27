@@ -17,3 +17,7 @@ export const invitationMessIdParamSchema = z.object({
 export const invitationIdParamSchema = z.object({
   invitationId: objectId,
 });
+
+export const invitationTokenParamSchema = z.object({
+  token: z.string().regex(/^[0-9a-f]{64}$/i, "Invalid invitation link"),
+});

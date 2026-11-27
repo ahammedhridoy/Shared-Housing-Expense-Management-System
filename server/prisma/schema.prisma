@@ -19,9 +19,10 @@ model User {
   memberships      MessMember[]
   invitationsSent  Invitation[]
   meals            Meal[]
-  expensesRecorded Expense[]
-  payments         Payment[]
-  paymentsRecorded Payment[]    @relation("PaymentRecorder")
+  expensesRecorded Expense[]    @relation("ExpenseRecorder")
+  expensesPaid     Expense[]    @relation("ExpensePayer")
+  deposits         Deposit[]    @relation("DepositOwner")
+  depositsRecorded Deposit[]    @relation("DepositRecorder")
   settlements      Settlement[]
 
   refreshTokens  RefreshToken[]
@@ -47,7 +48,7 @@ model Mess {
   invitations  Invitation[]
   meals        Meal[]
   expenses     Expense[]
-  payments     Payment[]
+  deposits     Deposit[]
   monthlyBills MonthlyBill[]
 
   createdAt DateTime @default(now())
@@ -70,10 +71,19 @@ model MessMember {
 
   role MessRole @default(MEMBER)
 
+  // Fixed monthly room rent this member pays (rooms can differ in price)
+  rentAmount Float @default(0)
+
+  // Members who leave are deactivated, not deleted, so past months still add up
+  isActive Boolean   @default(true)
+  joinedAt DateTime  @default(now())
+  leftAt   DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([userId, messId])
+  @@index([messId])
 }
 
 enum InvitationStatus {
@@ -105,21 +115,17 @@ model Invitation {
   @@index([email])
 }
 
-enum MealType {
-  BREAKFAST
-  LUNCH
-  DINNER
-}
-
+// One row per member per day. `count` is the number of meals eaten that day
+// (half meals allowed, e.g. 2.5).
 model Meal {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
   userId String @db.ObjectId
   messId String @db.ObjectId
 
-  date     DateTime
-  type     MealType
-  quantity Float    @default(1)
+  // Calendar day, stored as UTC midnight
+  date  DateTime
+  count Float
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -127,79 +133,102 @@ model Meal {
   user User @relation(fields: [userId], references: [id])
   mess Mess @relation(fields: [messId], references: [id])
 
-  @@index([userId])
-  @@index([messId])
-  @@index([date])
+  @@unique([messId, userId, date])
   @@index([messId, date])
 }
 
+// MEAL  = bazar/groceries; divided by total meals to get the meal rate
+// HOUSE = shared house bills (wifi, electricity, gas, water, maid, ...);
+//         split equally among members, or by custom shares
+enum ExpenseKind {
+  MEAL
+  HOUSE
+}
+
 enum ExpenseCategory {
-  FOOD
-  RENT
+  BAZAR
   ELECTRICITY
   GAS
   WATER
   INTERNET
-  MAINTENANCE
-  MAID_COST
+  MAID
+  SERVICE
   OTHER
+}
+
+type ExpenseShare {
+  userId String @db.ObjectId
+  amount Float
 }
 
 model Expense {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
-  messId     String @db.ObjectId
-  recordedBy String @db.ObjectId
+  messId     String  @db.ObjectId
+  recordedBy String  @db.ObjectId
+  // Member who paid out of their own pocket (credited to them).
+  // null = paid from the mess fund (deposits).
+  paidById   String? @db.ObjectId
 
+  kind        ExpenseKind
+  category    ExpenseCategory
   title       String
   description String?
   amount      Float
-  category    ExpenseCategory
+  // Calendar day, stored as UTC midnight
   date        DateTime
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  mess     Mess @relation(fields: [messId], references: [id])
-  recorder User @relation(fields: [recordedBy], references: [id])
-
-  @@index([messId])
-  @@index([recordedBy])
-  @@index([date])
-  @@index([messId, date])
-}
-
-model Payment {
-  id String @id @default(auto()) @map("_id") @db.ObjectId
-
-  messId           String  @db.ObjectId
-  userId           String  @db.ObjectId
-  recordedBy       String? @db.ObjectId
-  stripeCheckoutId String? @unique
-
-  amount Float
-  date   DateTime
-  note   String?
+  // HOUSE only. Empty = split equally among all members of the month.
+  shares ExpenseShare[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   mess     Mess  @relation(fields: [messId], references: [id])
-  user     User  @relation(fields: [userId], references: [id])
-  recorder User? @relation("PaymentRecorder", fields: [recordedBy], references: [id])
+  recorder User  @relation("ExpenseRecorder", fields: [recordedBy], references: [id])
+  paidBy   User? @relation("ExpensePayer", fields: [paidById], references: [id])
 
-  @@index([messId])
-  @@index([userId])
-  @@index([date])
   @@index([messId, date])
 }
 
-enum BillStatus {
-  DRAFT
-  FINALIZED
-  CLOSED
+enum PaymentMethod {
+  CASH
+  BKASH
+  NAGAD
+  ROCKET
+  BANK
+  OTHER
 }
 
+// Money a member hands to the manager, counted against a specific month.
+model Deposit {
+  id String @id @default(auto()) @map("_id") @db.ObjectId
+
+  messId     String @db.ObjectId
+  userId     String @db.ObjectId
+  recordedBy String @db.ObjectId
+
+  amount Float
+  method PaymentMethod @default(CASH)
+  note   String?
+  // Calendar day the money was received, stored as UTC midnight
+  date   DateTime
+  // The month this deposit settles
+  month  Int
+  year   Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  mess     Mess @relation(fields: [messId], references: [id])
+  user     User @relation("DepositOwner", fields: [userId], references: [id])
+  recorder User @relation("DepositRecorder", fields: [recordedBy], references: [id])
+
+  @@index([messId, year, month])
+  @@index([userId])
+}
+
+// A closed (locked) month. Open months have no row and are calculated live.
 model MonthlyBill {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
@@ -209,10 +238,13 @@ model MonthlyBill {
   year  Int
 
   totalMeals   Float @default(0)
-  totalExpense Float @default(0)
+  mealExpense  Float @default(0)
   mealRate     Float @default(0)
+  houseExpense Float @default(0)
+  totalRent    Float @default(0)
 
-  status BillStatus @default(DRAFT)
+  closedBy String   @db.ObjectId
+  closedAt DateTime @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -221,31 +253,23 @@ model MonthlyBill {
   settlements Settlement[]
 
   @@unique([messId, month, year])
-  @@index([messId])
-  @@index([year, month])
 }
 
-enum SettlementStatus {
-  UNPAID
-  PARTIAL
-  PAID
-}
-
+// Per-member charges frozen when a month is closed.
+// Deposits are not frozen: members can still pay off a closed month.
 model Settlement {
   id String @id @default(auto()) @map("_id") @db.ObjectId
 
   billId String @db.ObjectId
   userId String @db.ObjectId
 
-  mealCount    Float @default(0)
-  mealCost     Float @default(0)
-  expenseShare Float @default(0)
-
-  totalAmount Float @default(0)
-  paidAmount  Float @default(0)
-  dueAmount   Float @default(0)
-
-  status SettlementStatus @default(UNPAID)
+  mealCount     Float @default(0)
+  mealCost      Float @default(0)
+  rent          Float @default(0)
+  houseShare    Float @default(0)
+  totalCharge   Float @default(0)
+  // Bazar / bills this member paid out of pocket
+  expenseCredit Float @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -255,7 +279,6 @@ model Settlement {
 
   @@unique([billId, userId])
   @@index([userId])
-  @@index([billId])
 }
 
 model RefreshToken {

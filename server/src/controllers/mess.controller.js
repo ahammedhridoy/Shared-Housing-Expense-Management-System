@@ -4,130 +4,52 @@ import {
   getMessDetails,
   getMessMembers,
   updateMess,
+  updateMember,
   deleteMess,
   removeMessMember,
 } from "../services/mess.service.js";
+import { handle, send } from "../utils/respond.js";
 
-export const createMessController = async (req, res, next) => {
-  try {
-    const { name, description, address } = req.body;
+export const createMessController = handle(async (req, res) => {
+  const mess = await createMess({ userId: req.user.userId, ...req.body });
+  send(res, 201, "Mess created successfully", { mess });
+});
 
-    const mess = await createMess({
-      userId: req.user.userId,
-      name,
-      description,
-      address,
-    });
+export const getMyMessesController = handle(async (req, res) => {
+  const messes = await getMyMesses(req.user.userId);
+  send(res, 200, "Messes fetched successfully", { messes });
+});
 
-    res.status(201).json({
-      success: true,
-      message: "Mess created successfully",
-      data: { mess },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+export const getMessDetailsController = handle(async (req, res) => {
+  const mess = await getMessDetails(req.user.userId, req.params.messId);
+  send(res, 200, "Mess details fetched successfully", { mess });
+});
 
-export const getMyMessesController = async (req, res, next) => {
-  try {
-    const messes = await getMyMesses(req.user.userId);
+export const getMessMembersController = handle(async (req, res) => {
+  const members = await getMessMembers({
+    userId: req.user.userId,
+    messId: req.params.messId,
+    includeFormer: req.query.includeFormer === "true",
+  });
+  send(res, 200, "Mess members fetched successfully", { members, count: members.length });
+});
 
-    res.status(200).json({
-      success: true,
-      message: "Messes fetched successfully",
-      data: { messes },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+export const updateMessController = handle(async (req, res) => {
+  const mess = await updateMess({ messId: req.params.messId, ...req.body });
+  send(res, 200, "Mess updated successfully", { mess });
+});
 
-export const getMessDetailsController = async (req, res, next) => {
-  try {
-    const { messId } = req.params;
+export const updateMemberController = handle(async (req, res) => {
+  const member = await updateMember({ ...req.params, ...req.body });
+  send(res, 200, "Member updated successfully", { member });
+});
 
-    const mess = await getMessDetails(req.user.userId, messId);
+export const removeMessMemberController = handle(async (req, res) => {
+  await removeMessMember({ ...req.params, managerId: req.user.userId });
+  send(res, 200, "Member removed successfully");
+});
 
-    res.status(200).json({
-      success: true,
-      message: "Mess details fetched successfully",
-      data: { mess },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const getMessMembersController = async (req, res, next) => {
-  try {
-    const { messId } = req.params;
-
-    const members = await getMessMembers({
-      userId: req.user.userId,
-      messId,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Mess members fetched successfully",
-      data: { members, count: members.length },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const updateMessController = async (req, res, next) => {
-  try {
-    const { messId } = req.params;
-    const { name, description, address } = req.body;
-
-    const mess = await updateMess({ messId, name, description, address });
-
-    res.status(200).json({
-      success: true,
-      message: "Mess updated successfully",
-      data: { mess },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const removeMessMemberController = async (req, res, next) => {
-  try {
-    const { messId, userId } = req.params;
-
-    await removeMessMember({
-      messId,
-      userId,
-      managerId: req.user.userId,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Member removed successfully",
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const deleteMessController = async (req, res, next) => {
-  try {
-    const { messId } = req.params;
-
-    await deleteMess({
-      messId,
-      userId: req.user.userId,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Mess deleted successfully",
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+export const deleteMessController = handle(async (req, res) => {
+  await deleteMess({ messId: req.params.messId });
+  send(res, 200, "Mess deleted successfully");
+});

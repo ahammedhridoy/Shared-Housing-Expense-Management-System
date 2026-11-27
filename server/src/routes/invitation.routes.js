@@ -7,6 +7,7 @@ import {
   acceptInvitationController,
   cancelInvitationController,
   rejectInvitationController,
+  getInvitationByTokenController,
 } from "../controllers/invitation.controller.js";
 
 import authMiddleware from "../middlewares/auth.middleware.js";
@@ -17,9 +18,17 @@ import {
   createInvitationSchema,
   invitationMessIdParamSchema,
   invitationIdParamSchema,
+  invitationTokenParamSchema,
 } from "../validations/invitation.validation.js";
 
 const router = express.Router();
+
+// Public: preview an invitation from its link (no login needed)
+router.get(
+  "/token/:token",
+  validateParams(invitationTokenParamSchema),
+  getInvitationByTokenController,
+);
 
 // User sees their pending invitations
 router.get(

@@ -6,6 +6,7 @@ import {
   getMyMessesController,
   removeMessMemberController,
   updateMessController,
+  updateMemberController,
   deleteMessController,
 } from "../controllers/mess.controller.js";
 import authMiddleware from "../middlewares/auth.middleware.js";
@@ -17,55 +18,42 @@ import {
   updateMessSchema,
   messIdParamSchema,
   messMemberParamSchema,
+  updateMemberSchema,
 } from "../validations/mess.validation.js";
 
 const router = express.Router();
 
-router.post(
-  "/",
-  authMiddleware,
-  validate(createMessSchema),
-  createMessController,
-);
+router.use(authMiddleware);
 
-router.get("/my", authMiddleware, getMyMessesController);
+router.post("/", validate(createMessSchema), createMessController);
+router.get("/my", getMyMessesController);
 
-router.get(
-  "/:messId",
-  authMiddleware,
-  validateParams(messIdParamSchema),
-  getMessDetailsController,
-);
-
-router.get(
-  "/:messId/members",
-  authMiddleware,
-  validateParams(messIdParamSchema),
-  getMessMembersController,
-);
+router.get("/:messId", validateParams(messIdParamSchema), getMessDetailsController);
+router.get("/:messId/members", validateParams(messIdParamSchema), getMessMembersController);
 
 router.patch(
   "/:messId",
-  authMiddleware,
   validateParams(messIdParamSchema),
+  messManagerMiddleware,
   validate(updateMessSchema),
   updateMessController,
 );
 
+router.patch(
+  "/:messId/members/:userId",
+  validateParams(messMemberParamSchema),
+  messManagerMiddleware,
+  validate(updateMemberSchema),
+  updateMemberController,
+);
+
 router.delete(
   "/:messId/members/:userId",
-  authMiddleware,
   validateParams(messMemberParamSchema),
   messManagerMiddleware,
   removeMessMemberController,
 );
 
-router.delete(
-  "/:messId",
-  authMiddleware,
-  validateParams(messIdParamSchema),
-  messManagerMiddleware,
-  deleteMessController,
-);
+router.delete("/:messId", validateParams(messIdParamSchema), messManagerMiddleware, deleteMessController);
 
 export default router;
