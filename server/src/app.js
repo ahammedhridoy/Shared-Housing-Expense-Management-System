@@ -41,6 +41,14 @@ if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
 
+// Opening the API's own URL in a browser shows this instead of a 404
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "SplitEase API is running. Endpoints are under /api/v1.",
+  });
+});
+
 // Health check
 app.get("/api/v1/health", (req, res) => {
   res.status(200).json({
