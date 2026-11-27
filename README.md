@@ -143,7 +143,7 @@ Copy `client/.env.example` to `client/.env`:
 
 | Variable | Description |
 | --- | --- |
-| `VITE_API_URL` | API base URL, e.g. `http://localhost:5001/api/v1` |
+| `VITE_API_URL` | Leave as `/api/v1`. Vite forwards it to `localhost:5001` in development. |
 | `VITE_CURRENCY_CODE` | e.g. `BDT` or `USD` |
 | `VITE_CURRENCY_SYMBOL` | e.g. `৳` or `$` |
 | `VITE_CURRENCY_LOCALE` | e.g. `en-BD` or `en-US` |
@@ -158,6 +158,50 @@ cd client && npm run dev     # app on http://localhost:5173
 ```
 
 Open http://localhost:5173, create an account, create a mess, and invite your flatmates.
+
+## Deploying to Vercel
+
+The client and the server are deployed as **two Vercel projects** from this one repository.
+
+The browser only ever talks to the client's domain. The client's [`vercel.json`](client/vercel.json) forwards `/api/*` to the server project, so login cookies stay first-party and no CORS setup is needed.
+
+```text
+browser ──▶ your-app.vercel.app ──┬─ /api/*  ──▶ your-api.vercel.app  (Express as a serverless function)
+                                  └─ /*      ──▶ index.html          (React app)
+```
+
+### 1. MongoDB Atlas
+
+In **Network Access**, allow `0.0.0.0/0`. Vercel functions don't have fixed IP addresses.
+
+### 2. Deploy the server
+
+1. Vercel → **Add New Project** → import this repo → set **Root Directory** to `server`.
+2. Add these environment variables (Production):
+
+   | Variable | Value |
+   | --- | --- |
+   | `NODE_ENV` | `production` |
+   | `DATABASE_URL` | your Atlas connection string |
+   | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | long random strings |
+   | `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | `15m`, `7d` |
+   | `CLIENT_URL` | the client's URL (fill it in after step 3, then redeploy) |
+   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | your email settings |
+
+3. Deploy. Check `https://<server>.vercel.app/api/v1/health`. It should return `{"success":true,...}`.
+
+`npm install` runs `prisma generate` automatically (`postinstall`), and [`server/api/index.js`](server/api/index.js) serves the Express app.
+
+### 3. Deploy the client
+
+1. In [`client/vercel.json`](client/vercel.json), replace `YOUR-BACKEND.vercel.app` with your server's domain from step 2, then commit and push.
+2. Vercel → **Add New Project** → same repo → set **Root Directory** to `client`.
+3. Add these environment variables: `VITE_CURRENCY_CODE`, `VITE_CURRENCY_SYMBOL`, `VITE_CURRENCY_LOCALE`. Leave `VITE_API_URL` unset (it defaults to `/api/v1`).
+4. Deploy, then put this URL in the server's `CLIENT_URL` and redeploy the server, so that invite and password-reset emails link to the right site.
+
+### Schema changes
+
+Vercel does not change your database. After changing `server/prisma/schema.prisma`, run `npm run push` from your machine against the production `DATABASE_URL`.
 
 ## Using the app
 

@@ -15,4 +15,10 @@ export default defineConfig({
       "@": import.meta.dirname + "/src",
     },
   },
+  server: {
+    // Same path as production: /api is forwarded to the local API server
+    proxy: {
+      "/api": "http://localhost:5001",
+    },
+  },
 })

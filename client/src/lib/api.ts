@@ -2,7 +2,9 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios"
 import type { ApiResponse } from "@/types/api"
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5001/api/v1",
+  // Same-origin "/api/v1" by default: Vercel rewrites it to the backend (client/vercel.json)
+  // and Vite proxies it in development, so auth cookies stay first-party.
+  baseURL: import.meta.env.VITE_API_URL || "/api/v1",
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",

@@ -15,6 +15,9 @@ import monthRoutes from "./routes/month.routes.js";
 
 const app = express();
 
+// Behind Vercel's proxy: trust X-Forwarded-* so req.secure / req.ip are correct
+app.set("trust proxy", 1);
+
 // Security
 app.use(helmet());
 
