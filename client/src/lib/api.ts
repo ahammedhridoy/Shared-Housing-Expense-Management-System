@@ -2,9 +2,11 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios"
 import type { ApiResponse } from "@/types/api"
 
 const api = axios.create({
-  // Same-origin "/api/v1" by default: Vercel rewrites it to the backend (client/vercel.json)
-  // and Vite proxies it in development, so auth cookies stay first-party.
-  baseURL: import.meta.env.VITE_API_URL || "/api/v1",
+  // Production always calls same-origin "/api/v1", which Vercel rewrites to the backend
+  // (client/vercel.json). Calling the backend's own domain directly would make the auth
+  // cookies third-party, so the browser drops them and every refresh logs the user out.
+  // VITE_API_URL only applies in development (Vite also proxies /api to localhost:5001).
+  baseURL: import.meta.env.DEV ? import.meta.env.VITE_API_URL || "/api/v1" : "/api/v1",
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
