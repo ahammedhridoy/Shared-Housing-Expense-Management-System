@@ -1,145 +1,92 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useMyMesses, useCreateMess, useDeleteMess } from "@/features/mess/hooks/useMess"
-import { createMessSchema, type CreateMessFormData } from "@/features/mess/validations/create-mess.schema"
-import { Card, CardContent } from "@/components/ui/card"
+import { ChevronRight, Crown, Home, MapPin, Plus, Trash2, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Plus, Home, Trash2, MapPin } from "lucide-react"
+import { EmptyState, PageHeader } from "@/components/common/ui-kit"
+import { CreateMessDialog } from "@/components/common/CreateMessDialog"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { toast } from "@/components/common/toast"
+import { useDeleteMess, useMyMesses } from "@/features/mess/hooks/useMess"
+import type { MessListItem } from "@/types/api"
 
 export default function MessListPage() {
-  const [open, setOpen] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState<{ id: string; name: string } | null>(null)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-
   const { data: messes, isLoading } = useMyMesses()
-  const create = useCreateMess()
   const del = useDeleteMess()
-
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<CreateMessFormData>({
-    resolver: zodResolver(createMessSchema),
-    defaultValues: { name: "", description: "" },
-  })
-
-  function onSubmit(data: CreateMessFormData) {
-    create.mutate({ name: data.name, description: data.description || undefined }, {
-      onSuccess: () => { reset(); setOpen(false) },
-    })
-  }
+  const [open, setOpen] = useState(false)
+  const [deleting, setDeleting] = useState<MessListItem | null>(null)
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">My Messes</h1>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger render={<Button className="gap-2"><Plus className="h-4 w-4" />Create Mess</Button>} />
-          <DialogContent>
-            <DialogHeader><DialogTitle>Create a New Mess</DialogTitle></DialogHeader>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="mess-name">Mess Name</Label>
-                <Input id="mess-name" {...register("name")} placeholder="e.g. Sunset Villa" />
-                {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mess-desc">Description (optional)</Label>
-                <Input id="mess-desc" {...register("description")} placeholder="A short description" />
-                {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
-              </div>
-              {create.isError && <p className="text-sm text-danger">Failed to create mess.</p>}
-              <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Creating..." : "Create Mess"}</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-5">
+      <PageHeader
+        title="My messes"
+        actions={
+          <Button onClick={() => setOpen(true)}>
+            <Plus /> Create mess
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="divide-y">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 p-4">
-                  <Skeleton className="h-12 w-12 rounded-lg" />
-                  <div className="flex-1 space-y-1"><Skeleton className="h-4 w-40" /><Skeleton className="h-3 w-56" /></div>
+      {isLoading ? (
+        <Skeleton className="h-40 w-full rounded-xl" />
+      ) : !messes?.length ? (
+        <EmptyState
+          icon={Home}
+          title="No messes yet"
+          description="Create a mess for your flat, or ask your manager to invite you by email."
+          action={<Button onClick={() => setOpen(true)}><Plus /> Create mess</Button>}
+        />
+      ) : (
+        <ul className="divide-y rounded-xl border bg-card">
+          {messes.map((mess) => (
+            <li key={mess.id} className="flex items-center gap-2 pr-2">
+              <Link to={`/mess/${mess.id}`} className="flex min-w-0 flex-1 items-center gap-4 p-4 hover:bg-muted/50">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-lg font-semibold text-primary">
+                  {mess.name.charAt(0).toUpperCase()}
                 </div>
-              ))}
-            </div>
-          ) : (messes ?? []).length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Home className="h-10 w-10 text-muted-foreground mb-3" />
-              <p className="text-sm font-medium text-foreground">No messes yet</p>
-              <p className="text-xs text-muted-foreground mt-1">Create your first mess or accept an invitation</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {(messes ?? []).map((mess) => (
-                <Link
-                  key={mess.id}
-                  to={`/mess/${mess.id}`}
-                  className="flex items-center gap-4 p-4 hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-primary font-semibold text-lg shrink-0">
-                    {mess.name.charAt(0)}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">
-                      {mess.name}
-                    </p>
-                    {(mess as any).address && (
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        {(mess as any).address}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setConfirmDelete({ id: mess.id, name: mess.name }); setDeleteOpen(true) }}
-                    className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors shrink-0"
-                    title="Delete mess"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </Link>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 font-medium">
+                    {mess.name}
+                    {mess.role === "MANAGER" && <Crown className="size-3.5 text-amber-600" aria-label="You manage this mess" />}
+                  </p>
+                  <p className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1"><Users className="size-3" /> {mess.memberCount} members</span>
+                    {mess.address && <span className="flex items-center gap-1"><MapPin className="size-3" /> {mess.address}</span>}
+                  </p>
+                </div>
+                <ChevronRight className="size-4 text-muted-foreground" />
+              </Link>
+              {mess.role === "MANAGER" && (
+                <Button variant="ghost" size="icon-sm" aria-label={`Delete ${mess.name}`} onClick={() => setDeleting(mess)}>
+                  <Trash2 className="text-muted-foreground" />
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
 
-      {/* Delete confirmation dialog */}
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Delete Mess</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete <strong className="text-foreground">{confirmDelete?.name}</strong>?
-              This action cannot be undone. All data will be lost.
-            </p>
-            {del.isError && <p className="text-sm text-danger">Failed to delete mess.</p>}
-            <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDeleteOpen(false)}>Cancel</Button>
-              <Button
-                variant="destructive"
-                className="flex-1"
-                disabled={del.isPending}
-                onClick={() => {
-                  if (!confirmDelete) return
-                  del.mutate(confirmDelete.id, {
-                    onSuccess: () => { setDeleteOpen(false); setConfirmDelete(null) },
-                  })
-                }}
-              >
-                {del.isPending ? "Deleting..." : "Delete"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <CreateMessDialog open={open} onOpenChange={setOpen} />
+
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title={`Delete ${deleting?.name}?`}
+        description="All meals, bazar, bills, deposits and history of this mess will be permanently deleted for everyone. This cannot be undone."
+        confirmLabel="Delete mess"
+        destructive
+        loading={del.isPending}
+        onConfirm={() =>
+          deleting &&
+          del.mutate(deleting.id, {
+            onSuccess: () => {
+              toast.success("Mess deleted")
+              setDeleting(null)
+            },
+            onError: (e) => toast.error(e.message),
+          })
+        }
+      />
     </div>
   )
 }

@@ -6,20 +6,20 @@ interface NavItemProps {
   to: string
   icon: LucideIcon
   label: string
+  end?: boolean
   onClick?: () => void
 }
 
-export function NavItem({ to, icon: Icon, label, onClick }: NavItemProps) {
+export function NavItem({ to, icon: Icon, label, end, onClick }: NavItemProps) {
   return (
     <NavLink
       to={to}
+      end={end}
       onClick={onClick}
       className={({ isActive }) =>
         cn(
           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-          isActive
-            ? "bg-primary text-primary-foreground"
-            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )
       }
     >

@@ -1,7 +1,13 @@
 import api from "@/lib/api"
-import type { ApiResponse, Invitation } from "@/types/api"
+import type { ApiResponse, Invitation, InvitationPreview } from "@/types/api"
 
 export const invitationApi = {
+  // Public: no login needed
+  getByToken: async (token: string) => {
+    const response = await api.get<ApiResponse<{ invitation: InvitationPreview }>>(`/invitations/token/${token}`)
+    return response.data.data.invitation
+  },
+
   getMyPending: async () => {
     const response = await api.get<ApiResponse<{ invitations: Invitation[] }>>("/invitations/pending")
     return response.data.data.invitations

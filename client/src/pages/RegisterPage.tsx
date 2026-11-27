@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
+import { useSearchParams } from "react-router-dom";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { isAxiosError } from "axios";
 import { AlertCircle } from "lucide-react";
@@ -22,6 +23,7 @@ import { useRegister } from "@/features/auth/hooks/useRegister";
 
 export default function RegisterPage() {
   const registerMutation = useRegister();
+  const [searchParams] = useSearchParams();
 
   const {
     register,
@@ -31,15 +33,14 @@ export default function RegisterPage() {
     resolver: zodResolver(registerSchema),
     defaultValues: {
       name: "",
-      email: "",
+      email: searchParams.get("email") ?? "",
       password: "",
       confirmPassword: "",
     },
   });
 
   const onSubmit = (data: RegisterFormData) => {
-    const { confirmPassword: _, ...payload } = data;
-    registerMutation.mutate(payload);
+    registerMutation.mutate({ name: data.name, email: data.email, password: data.password });
   };
 
   return (

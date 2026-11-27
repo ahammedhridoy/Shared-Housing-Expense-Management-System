@@ -1,4 +1,3 @@
-import { lazy, Suspense } from "react"
 import { createBrowserRouter } from "react-router-dom"
 import PrivateRoute from "./PrivateRoute"
 import PublicRoute from "./PublicRoute"
@@ -10,31 +9,7 @@ import RegisterPage from "@/pages/RegisterPage"
 import ForgotPasswordPage from "@/pages/ForgotPasswordPage"
 import ResetPasswordPage from "@/pages/ResetPasswordPage"
 
-// Lazy-loaded page components
-const DashboardPage = lazy(() => import("@/pages/DashboardPage"))
-const MessListPage = lazy(() => import("@/pages/MessListPage"))
-const MessLayout = lazy(() => import("@/pages/MessLayout"))
-const MessOverviewPage = lazy(() => import("@/pages/MessOverviewPage"))
-const MealsPage = lazy(() => import("@/pages/MealsPage"))
-const ExpensesPage = lazy(() => import("@/pages/ExpensesPage"))
-const PaymentsPage = lazy(() => import("@/pages/PaymentsPage"))
-const BillsPage = lazy(() => import("@/pages/BillsPage"))
-const SettlementsPage = lazy(() => import("@/pages/SettlementsPage"))
-const MembersPage = lazy(() => import("@/pages/MembersPage"))
-const ProfilePage = lazy(() => import("@/pages/ProfilePage"))
-const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"))
-
-function PageLoader() {
-  return (
-    <div className="flex h-full items-center justify-center py-16">
-      <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
-    </div>
-  )
-}
-
-function LazyPage({ children }: { children: React.ReactNode }) {
-  return <Suspense fallback={<PageLoader />}>{children}</Suspense>
-}
+import { LazyPage, DashboardPage, MessListPage, MessLayout, MessOverviewPage, MealsPage, ExpensesPage, DepositsPage, HistoryPage, MembersPage, ProfilePage, NotFoundPage, InvitePage } from "./lazy-pages"
 
 export const router = createBrowserRouter([
   // Public routes
@@ -71,6 +46,12 @@ export const router = createBrowserRouter([
     ),
   },
 
+  // Invite link from email/WhatsApp: works logged in or out
+  {
+    path: "/invite/:token",
+    element: <LazyPage><InvitePage /></LazyPage>,
+  },
+
   // Private routes with AppLayout
   {
     path: "/",
@@ -91,9 +72,8 @@ export const router = createBrowserRouter([
           { index: true, element: <LazyPage><MessOverviewPage /></LazyPage> },
           { path: "meals", element: <LazyPage><MealsPage /></LazyPage> },
           { path: "expenses", element: <LazyPage><ExpensesPage /></LazyPage> },
-          { path: "payments", element: <LazyPage><PaymentsPage /></LazyPage> },
-          { path: "bills", element: <LazyPage><BillsPage /></LazyPage> },
-          { path: "settlements", element: <LazyPage><SettlementsPage /></LazyPage> },
+          { path: "deposits", element: <LazyPage><DepositsPage /></LazyPage> },
+          { path: "history", element: <LazyPage><HistoryPage /></LazyPage> },
           { path: "members", element: <LazyPage><MembersPage /></LazyPage> },
         ],
       },

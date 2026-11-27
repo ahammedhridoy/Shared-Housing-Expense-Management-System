@@ -1,173 +1,260 @@
 import { useState } from "react"
-import { useParams } from "react-router-dom"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useAuth } from "@/hooks/useAuth"
-import { useMembers, useSendInvite, useRemoveMember, usePendingInvitations, useCancelInvitation } from "@/features/members/hooks/useMembers"
-import { inviteMemberSchema, type InviteMemberFormData } from "@/features/members/validations/invite-member.schema"
-import { Card, CardContent } from "@/components/ui/card"
+import { BedDouble, Crown, Link as LinkIcon, Mail, MoreVertical, Plus, UserMinus, Users, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Plus, Users, Mail, Trash2, X } from "lucide-react"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { EmptyState, Field, PageHeader } from "@/components/common/ui-kit"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { toast } from "@/components/common/toast"
+import { useAuthStore } from "@/stores/auth.store"
+import { useMembers, useMessContext, useRemoveMember, useUpdateMember } from "@/features/mess/hooks/useMessData"
+import { useCancelInvitation, useMessInvitations, useSendInvitation } from "@/features/mess/hooks/useInvitation"
+import { formatCurrency, CURRENCY_SYMBOL } from "@/lib/currency"
+import type { MessMember } from "@/types/api"
 
-const roleBadge: Record<string, string> = {
-  MANAGER: "bg-info/10 text-info",
-  MEMBER: "bg-muted text-muted-foreground",
+function RentCell({ member, editable, messId }: { member: MessMember; editable: boolean; messId: string }) {
+  const update = useUpdateMember(messId)
+  const [value, setValue] = useState<string | null>(null)
+
+  if (!editable) return <span className="font-semibold tabular-nums">{formatCurrency(member.rentAmount)}</span>
+
+  const commit = () => {
+    if (value === null) return
+    const n = Number(value)
+    if (Number.isNaN(n) || n < 0) {
+      toast.error("Rent must be 0 or more")
+      setValue(null)
+      return
+    }
+    if (n === member.rentAmount) return setValue(null)
+    update.mutate(
+      { userId: member.user.id, rentAmount: n },
+      {
+        onSuccess: () => {
+          toast.success(`${member.user.name}'s rent set to ${formatCurrency(n)}`)
+          setValue(null)
+        },
+        onError: (e) => toast.error(e.message),
+      }
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-sm text-muted-foreground">{CURRENCY_SYMBOL}</span>
+      <Input
+        inputMode="decimal"
+        aria-label={`Room rent for ${member.user.name}`}
+        className="h-8 w-24 text-right tabular-nums"
+        value={value ?? String(member.rentAmount)}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+        disabled={update.isPending}
+      />
+    </div>
+  )
 }
 
 export default function MembersPage() {
-  const { messId } = useParams<{ messId: string }>()
-  const { user } = useAuth()
-  const mid = messId!
+  const { messId, isManager } = useMessContext()
+  const user = useAuthStore((s) => s.user)
+  const { data: members = [], isLoading } = useMembers(messId)
+  const { data: invitations = [] } = useMessInvitations(isManager ? messId : "")
+  const sendInvite = useSendInvitation(messId)
+  const cancelInvite = useCancelInvitation(messId)
+  const updateMember = useUpdateMember(messId)
+  const removeMember = useRemoveMember(messId)
+
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [email, setEmail] = useState("")
+  const [inviteError, setInviteError] = useState("")
+  const [removing, setRemoving] = useState<MessMember | null>(null)
 
-  const { data: membersData, isLoading: membersLoading } = useMembers(mid)
-  const { data: invitations, isLoading: invLoading } = usePendingInvitations(mid)
-  const sendInvite = useSendInvite(mid)
-  const removeMember = useRemoveMember(mid)
-  const cancelInvitation = useCancelInvitation()
+  const pending = invitations.filter((i) => i.status === "PENDING")
+  const totalRent = members.reduce((s, m) => s + m.rentAmount, 0)
 
-  const members = membersData?.members ?? []
-  const pendingInvitations = invitations?.filter((inv) => inv.status === "PENDING") ?? []
-  const isManager = members.some((m) => m.user.id === user?.id && m.role === "MANAGER")
-
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<InviteMemberFormData>({
-    resolver: zodResolver(inviteMemberSchema),
-    defaultValues: { email: "" },
-  })
-
-  function onSubmit(data: InviteMemberFormData) {
-    sendInvite.mutate(data.email, {
-      onSuccess: () => { reset(); setInviteOpen(false) },
+  const invite = (e: React.FormEvent) => {
+    e.preventDefault()
+    setInviteError("")
+    if (!/^\S+@\S+\.\S+$/.test(email)) return setInviteError("Enter a valid email address.")
+    sendInvite.mutate(email.trim(), {
+      onSuccess: (inv) => {
+        if (inv.emailSent) toast.success(`Invitation emailed to ${inv.email}`)
+        else toast.success("Invitation created. Email couldn't be sent, so use \"Copy link\" to share it.")
+        setEmail("")
+        setInviteOpen(false)
+      },
+      onError: (err) => setInviteError(err.message),
     })
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">Members</h1>
-        {isManager && (
-          <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-            <DialogTrigger render={<Button className="gap-2"><Plus className="h-4 w-4" />Invite Member</Button>} />
-            <DialogContent>
-              <DialogHeader><DialogTitle>Invite Member</DialogTitle></DialogHeader>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="inv-email">Email</Label>
-                  <Input id="inv-email" type="email" {...register("email")} placeholder="member@example.com" />
-                  {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+    <>
+      <PageHeader
+        title="Members & rent"
+        description="Each member's room rent is charged every month. Rooms can have different rents."
+        actions={
+          isManager && (
+            <Button onClick={() => setInviteOpen(true)}>
+              <Plus /> Invite member
+            </Button>
+          )
+        }
+      />
+
+      <div className="rounded-xl border bg-card">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <p className="font-medium">
+            {members.length} {members.length === 1 ? "member" : "members"}
+          </p>
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <BedDouble className="size-4" /> Total rent <b className="text-foreground tabular-nums">{formatCurrency(totalRent)}</b>
+          </p>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2 p-4">
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+          </div>
+        ) : members.length === 0 ? (
+          <div className="p-4">
+            <EmptyState icon={Users} title="No members" />
+          </div>
+        ) : (
+          <ul className="divide-y">
+            {members.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold">
+                  {m.user.name.charAt(0).toUpperCase()}
                 </div>
-                {sendInvite.isError && <p className="text-sm text-danger">Failed to send invitation.</p>}
-                <Button type="submit" className="w-full" disabled={sendInvite.isPending}>
-                  {sendInvite.isPending ? "Sending..." : "Send Invitation"}
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5 truncate font-medium">
+                    {m.user.name}
+                    {m.user.id === user?.id && <span className="text-xs font-normal text-muted-foreground">(you)</span>}
+                    {m.role === "MANAGER" && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                        <Crown className="size-3" /> Manager
+                      </span>
+                    )}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">{m.user.email}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="hidden text-xs text-muted-foreground sm:inline">Room rent</span>
+                  <RentCell member={m} editable={isManager} messId={messId} />
+                  {isManager && m.user.id !== user?.id && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="More actions" />}>
+                        <MoreVertical />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() =>
+                            updateMember.mutate(
+                              { userId: m.user.id, role: m.role === "MANAGER" ? "MEMBER" : "MANAGER" },
+                              {
+                                onSuccess: () => toast.success(m.role === "MANAGER" ? `${m.user.name} is now a member` : `${m.user.name} is now a manager`),
+                                onError: (e) => toast.error(e.message),
+                              }
+                            )
+                          }
+                        >
+                          <Crown /> {m.role === "MANAGER" ? "Remove manager role" : "Make manager"}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem variant="destructive" onClick={() => setRemoving(m)}>
+                          <UserMinus /> Remove from mess
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
-      {/* Members */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="border-b px-4 py-3">
-            <h2 className="text-sm font-semibold text-foreground">Active Members</h2>
-          </div>
-          {membersLoading ? (
-            <div className="divide-y">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-4 p-4">
-                  <Skeleton className="h-10 w-10 rounded-full" />
-                  <div className="flex-1 space-y-1"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-48" /></div>
+      {isManager && pending.length > 0 && (
+        <div className="rounded-xl border bg-card">
+          <p className="border-b px-4 py-3 font-medium">Pending invitations</p>
+          <ul className="divide-y">
+            {pending.map((inv) => (
+              <li key={inv.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5">
+                <Mail className="size-4 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm">{inv.email}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Expires {new Date(inv.expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                  </p>
                 </div>
-              ))}
-            </div>
-          ) : members.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Users className="h-10 w-10 text-muted-foreground mb-3" />
-              <p className="text-sm font-medium text-foreground">No members</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {members.map((m) => (
-                <div key={m.id} className="flex items-center gap-4 p-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-sm font-semibold text-muted-foreground">
-                    {m.user.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{m.user.name}</p>
-                    <p className="text-xs text-muted-foreground">{m.user.email}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${roleBadge[m.role] ?? "bg-muted text-muted-foreground"}`}>
-                      {m.role}
-                    </span>
-                    {isManager && m.user.id !== user?.id && (
-                      <button
-                        onClick={() => removeMember.mutate(m.user.id)}
-                        className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors"
-                        title="Remove member"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Pending Invitations */}
-      {isManager && (
-        <Card>
-          <CardContent className="p-0">
-            <div className="border-b px-4 py-3">
-              <h2 className="text-sm font-semibold text-foreground">Pending Invitations</h2>
-            </div>
-            {invLoading ? (
-              <div className="divide-y">
-                {[1].map((i) => (
-                  <div key={i} className="flex items-center gap-4 p-4">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1 space-y-1"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-48" /></div>
-                  </div>
-                ))}
-              </div>
-            ) : pendingInvitations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Mail className="h-10 w-10 text-muted-foreground mb-3" />
-                <p className="text-sm font-medium text-foreground">No pending invitations</p>
-              </div>
-            ) : (
-              <div className="divide-y">
-                {pendingInvitations.map((inv) => (
-                  <div key={inv.id} className="flex items-center gap-4 p-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10">
-                      <Mail className="h-5 w-5 text-warning" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{inv.email}</p>
-                      <p className="text-xs text-muted-foreground">Sent {new Date(inv.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <button
-                      onClick={() => cancelInvitation.mutate(inv.id)}
-                      className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors"
-                      title="Cancel invitation"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                {inv.inviteUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(inv.inviteUrl!)
+                        toast.success("Invite link copied. Share it on WhatsApp or Messenger.")
+                      } catch {
+                        toast.error("Couldn't copy. Long-press the link to copy it instead.")
+                      }
+                    }}
+                  >
+                    <LinkIcon /> Copy link
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => cancelInvite.mutate(inv.id, { onSuccess: () => toast.success("Invitation cancelled") })}
+                >
+                  <X /> Cancel
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
-    </div>
+
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite a member</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={invite} className="space-y-4">
+            <Field label="Email" htmlFor="inv-email" error={inviteError} hint="We'll email them a link. They join by signing up or logging in with this email. The invite lasts 7 days.">
+              <Input id="inv-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="friend@example.com" />
+            </Field>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setInviteOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={sendInvite.isPending}>{sendInvite.isPending ? "Sending..." : "Send invite"}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!removing}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title={`Remove ${removing?.user.name}?`}
+        description="They lose access to the mess. Their meals, payments and past months stay in the records, and they still appear in this month's account."
+        confirmLabel="Remove"
+        destructive
+        loading={removeMember.isPending}
+        onConfirm={() =>
+          removing &&
+          removeMember.mutate(removing.user.id, {
+            onSuccess: () => {
+              toast.success(`${removing.user.name} removed`)
+              setRemoving(null)
+            },
+            onError: (e) => toast.error(e.message),
+          })
+        }
+      />
+    </>
   )
 }

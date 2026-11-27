@@ -17,6 +17,7 @@ export interface MessListItem {
   updatedAt: string
   role: "MANAGER" | "MEMBER"
   membershipId: string
+  memberCount: number
 }
 
 // From GET /mess/:messId
@@ -30,6 +31,7 @@ export interface MessDetail {
   membership: {
     id: string
     role: "MANAGER" | "MEMBER"
+    rentAmount: number
   }
 }
 
@@ -69,130 +71,169 @@ export interface AuthResponse {
 export interface CreateMessInput {
   name: string
   description?: string
+  address?: string
+  rentAmount?: number
+}
+
+export interface MessMember {
+  id: string
+  role: "MANAGER" | "MEMBER"
+  rentAmount: number
+  isActive: boolean
+  joinedAt: string
+  leftAt: string | null
+  user: { id: string; name: string; email: string }
 }
 
 export interface InviteMemberInput {
   email: string
 }
 
-// Meal specific — matches backend Prisma select
-export interface Meal {
+// Meals — one row per member per day
+export interface MealEntry {
   id: string
   userId: string
-  messId: string
-  date: string
-  type: "BREAKFAST" | "LUNCH" | "DINNER"
-  quantity: number
-  createdAt: string
-  updatedAt: string
+  date: string // YYYY-MM-DD
+  count: number
 }
 
-export interface LogMealInput {
+export interface MealEntryInput {
   userId: string
   date: string
-  type: "BREAKFAST" | "LUNCH" | "DINNER"
-  quantity: number
+  count: number
 }
 
-// Expense specific — matches backend Prisma select
+// Expenses
+export type ExpenseKind = "MEAL" | "HOUSE"
+export type ExpenseCategory =
+  | "BAZAR"
+  | "ELECTRICITY"
+  | "GAS"
+  | "WATER"
+  | "INTERNET"
+  | "MAID"
+  | "SERVICE"
+  | "OTHER"
+
+export interface ExpenseShare {
+  userId: string
+  amount: number
+}
+
 export interface Expense {
   id: string
   messId: string
-  recordedBy: string
+  kind: ExpenseKind
+  category: ExpenseCategory
   title: string
   description: string | null
   amount: number
-  category: string
   date: string
+  shares: ExpenseShare[]
+  paidById: string | null
+  paidBy: { id: string; name: string } | null
+  recorder: { id: string; name: string }
   createdAt: string
   updatedAt: string
 }
 
-export interface CreateExpenseInput {
+export interface ExpenseInput {
+  kind: ExpenseKind
+  category: ExpenseCategory
   title: string
-  description?: string
+  description?: string | null
   amount: number
-  category: string
   date: string
+  paidById: string | null
+  shares?: ExpenseShare[]
 }
 
-// Payment specific — matches backend Prisma select
-export interface Payment {
+// Deposits
+export type PaymentMethod = "CASH" | "BKASH" | "NAGAD" | "ROCKET" | "BANK" | "OTHER"
+
+export interface Deposit {
   id: string
   messId: string
   userId: string
-  recordedBy: string | null
-  stripeCheckoutId: string | null
   amount: number
-  date: string
+  method: PaymentMethod
   note: string | null
+  date: string
+  month: number
+  year: number
   createdAt: string
-  updatedAt: string
+  user: { id: string; name: string }
+  recorder: { id: string; name: string }
 }
 
-export interface CreatePaymentInput {
-  payerId: string
+export interface DepositInput {
+  userId: string
   amount: number
   date: string
-  note?: string
+  method: PaymentMethod
+  note?: string | null
+  month?: number
+  year?: number
 }
 
-export interface CheckoutSessionResponse {
-  sessionId: string
-  url: string
-}
-
-export interface VerifyPaymentInput {
-  sessionId: string
-}
-
-// MonthlyBill specific — matches backend Prisma select
-export interface MonthlyBill {
-  id: string
-  messId: string
-  month: number
-  year: number
-  totalMeals: number
-  totalExpense: number
-  mealRate: number
-  status: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface GenerateBillInput {
-  month: number
-  year: number
-}
-
-// Settlement specific — matches backend Prisma select
-export interface Settlement {
-  id: string
-  billId: string
+// Month summary
+export interface MemberAccount {
   userId: string
+  name: string | null
+  email: string | null
+  isMember: boolean
   mealCount: number
   mealCost: number
-  expenseShare: number
-  totalAmount: number
-  paidAmount: number
-  dueAmount: number
-  status: string
-  createdAt: string
-  updatedAt: string
+  rent: number
+  houseShare: number
+  totalCharge: number
+  expenseCredit: number
+  deposit: number
+  totalPaid: number
+  balance: number // negative = owes, positive = gets money back
 }
 
-export interface CreateSettlementInput {
-  amount: number
-  method?: string
+export interface MonthSummary {
+  year: number
+  month: number
+  status: "OPEN" | "CLOSED"
+  closedAt: string | null
+  totals: {
+    totalMeals: number
+    mealExpense: number
+    mealRate: number
+    houseExpense: number
+    totalRent: number
+    totalCharge: number
+    totalDeposits: number
+    fundSpent?: number
+    cashInHand?: number
+  }
+  members: MemberAccount[]
+  warnings: string[]
+}
+
+export interface ClosedMonth {
+  year: number
+  month: number
+  closedAt: string
+  totalMeals: number
+  mealRate: number
+  totalCharge: number
+  myCharge: number
+  myBalance: number
 }
 
 // Invitation specific — matches backend response
 export interface Invitation {
   id: string
   email: string
-  status: "PENDING" | "ACCEPTED" | "EXPIRED" | "CANCELLED"
+  status: InvitationStatus
   expiresAt: string
   createdAt: string
+  // Only on the manager's list / right after sending
+  inviteUrl?: string
+  emailSent?: boolean
   mess: {
     id: string
     name: string
@@ -204,4 +245,16 @@ export interface Invitation {
     name: string
     email: string
   }
+}
+
+export type InvitationStatus = "PENDING" | "ACCEPTED" | "REJECTED" | "EXPIRED"
+
+// Public preview behind an invite link
+export interface InvitationPreview {
+  id: string
+  email: string
+  status: InvitationStatus
+  expiresAt: string
+  mess: { id: string; name: string; address: string | null }
+  inviter: { name: string }
 }

@@ -1,205 +1,130 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useState } from "react"
 import { Link } from "react-router-dom"
-import {
-  Home,
-  Plus,
-  Users,
-  Mail,
-  Check,
-  X,
-  LayoutDashboard,
-  ArrowRight,
-} from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Check, ChevronRight, Crown, Home, Mail, Plus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { messApi, invitationApi } from "@/services"
-import { useAuth } from "@/hooks/useAuth"
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  loading,
-  iconBg = "bg-primary/10",
-  iconColor = "text-primary",
-}: {
-  icon: typeof Home
-  label: string
-  value: number
-  loading: boolean
-  iconBg?: string
-  iconColor?: string
-}) {
-  return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-4">
-        <div className={`flex size-10 items-center justify-center rounded-lg ${iconBg}`}>
-          <Icon className={`size-5 ${iconColor}`} />
-        </div>
-        <div>
-          {loading ? (
-            <Skeleton className="h-5 w-8" />
-          ) : (
-            <p className="text-2xl font-semibold">{value}</p>
-          )}
-          <p className="text-xs text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
+import { Balance, EmptyState, PageHeader } from "@/components/common/ui-kit"
+import { toast } from "@/components/common/toast"
+import { useAuthStore } from "@/stores/auth.store"
+import { useMessesThisMonth, useMyMesses } from "@/features/mess/hooks/useMess"
+import { useAcceptInvitation, usePendingInvitations, useRejectInvitation } from "@/features/mess/hooks/useInvitation"
+import { CreateMessDialog } from "@/components/common/CreateMessDialog"
+import { formatCurrency, formatRate } from "@/lib/currency"
+import { monthLabel } from "@/lib/month"
 
 export default function DashboardPage() {
-  const { user } = useAuth()
-  const queryClient = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = now.getMonth() + 1
 
-  const { data: messes, isLoading: messesLoading } = useQuery({
-    queryKey: ["messes"],
-    queryFn: messApi.getMy,
-  })
-
-  const { data: invitations, isLoading: invitationsLoading } = useQuery({
-    queryKey: ["invitations", "pending"],
-    queryFn: invitationApi.getMyPending,
-  })
-
-  const acceptMutation = useMutation({
-    mutationFn: invitationApi.accept,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["messes"] })
-      queryClient.invalidateQueries({ queryKey: ["invitations", "pending"] })
-    },
-  })
-
-  const rejectMutation = useMutation({
-    mutationFn: invitationApi.reject,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["invitations", "pending"] })
-    },
-  })
-
-  const totalMesses = messes?.length ?? 0
-  const managerMesses = messes?.filter((m) => m.role === "MANAGER").length ?? 0
-  const memberMesses = messes?.filter((m) => m.role === "MEMBER").length ?? 0
-  const pendingInvites = invitations?.length ?? 0
+  const { data: messes, isLoading } = useMyMesses()
+  const summaries = useMessesThisMonth(messes, year, month)
+  const { data: invitations = [] } = usePendingInvitations()
+  const accept = useAcceptInvitation()
+  const reject = useRejectInvitation()
+  const [createOpen, setCreateOpen] = useState(false)
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground">
-          Welcome back, {user?.name?.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Here's an overview of your messes and activity.
-        </p>
-      </div>
+    <div className="mx-auto max-w-4xl space-y-5">
+      <PageHeader
+        title={`Hi, ${user?.name?.split(" ")[0] ?? "there"}`}
+        description={`Your accounts for ${monthLabel(year, month)}`}
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={Home} label="Total Messes" value={totalMesses} loading={messesLoading} />
-        <StatCard icon={LayoutDashboard} label="Managed by You" value={managerMesses} loading={messesLoading} />
-        <StatCard icon={Users} label="Member of" value={memberMesses} loading={messesLoading} />
-        <StatCard icon={Mail} label="Pending Invitations" value={pendingInvites} loading={invitationsLoading} iconBg="bg-warning/10" iconColor="text-warning" />
-      </div>
-
-      {!invitationsLoading && pendingInvites > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Pending Invitations</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {invitations?.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between rounded-lg border p-3">
+      {invitations.length > 0 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50">
+          <p className="flex items-center gap-2 border-b border-sky-200 px-4 py-3 font-medium text-sky-900">
+            <Mail className="size-4" /> You've been invited
+          </p>
+          <ul className="divide-y divide-sky-200">
+            {invitations.map((inv) => (
+              <li key={inv.id} className="flex items-center gap-3 px-4 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">{inv.mess.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    Invited by {inv.inviter.name}
-                  </p>
+                  <p className="text-xs text-muted-foreground">Invited by {inv.inviter.name}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-success"
-                    onClick={() => acceptMutation.mutate(inv.id)}
-                    disabled={acceptMutation.isPending}
-                  >
-                    <Check className="size-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="size-8 text-destructive"
-                    onClick={() => rejectMutation.mutate(inv.id)}
-                    disabled={rejectMutation.isPending}
-                  >
-                    <X className="size-4" />
-                  </Button>
-                </div>
-              </div>
+                <Button
+                  size="sm"
+                  disabled={accept.isPending}
+                  onClick={() =>
+                    accept.mutate(inv.id, {
+                      onSuccess: () => toast.success(`You joined ${inv.mess.name}`),
+                      onError: (e) => toast.error(e.message),
+                    })
+                  }
+                >
+                  <Check /> Join
+                </Button>
+                <Button size="sm" variant="ghost" disabled={reject.isPending} onClick={() => reject.mutate(inv.id)} aria-label="Decline">
+                  <X />
+                </Button>
+              </li>
             ))}
-          </CardContent>
-        </Card>
+          </ul>
+        </div>
       )}
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">My Messes</CardTitle>
-          <Button size="sm" render={<Link to="/mess" />}>
-            <Plus className="mr-1 size-4" />
-            New Mess
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {messesLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-16 w-full rounded-lg" />
-              ))}
-            </div>
-          ) : messes && messes.length > 0 ? (
-            <div className="space-y-2">
-              {messes.map((mess) => (
-                <Link
-                  key={mess.id}
-                  to={`/mess/${mess.id}`}
-                  className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium">{mess.name}</p>
-                      <Badge variant="secondary" className="text-xs">
-                        {mess.role}
-                      </Badge>
-                    </div>
-                    {mess.description && (
-                      <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                        {mess.description}
-                      </p>
-                    )}
+      {isLoading ? (
+        <Skeleton className="h-36 w-full rounded-xl" />
+      ) : !messes?.length ? (
+        <EmptyState
+          icon={Home}
+          title="You're not in a mess yet"
+          description="Create one for your flat and invite your flatmates, or wait for an invitation from your manager."
+          action={<Button onClick={() => setCreateOpen(true)}><Plus /> Create mess</Button>}
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {messes.map((mess, i) => {
+            const summary = summaries[i]?.data
+            const me = summary?.members.find((m) => m.userId === user?.id)
+            return (
+              <Link key={mess.id} to={`/mess/${mess.id}`} className="group rounded-xl border bg-card p-5 transition-shadow hover:shadow-md">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 truncate font-semibold">
+                      {mess.name}
+                      {mess.role === "MANAGER" && <Crown className="size-3.5 text-amber-600" />}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{mess.memberCount} members</p>
                   </div>
-                  <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
-              <Home className="mb-3 size-10 text-muted-foreground/50" />
-              <p className="text-sm font-medium text-muted-foreground">
-                No messes yet
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Create a mess or ask a friend to invite you.
-              </p>
-              <Button size="sm" className="mt-4" render={<Link to="/mess" />}>
-                <Plus className="mr-1 size-4" />
-                Create Mess
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  <ChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                </div>
+
+                <div className="mt-4">
+                  {summaries[i]?.isLoading ? (
+                    <Skeleton className="h-8 w-40" />
+                  ) : me ? (
+                    <Balance value={me.balance} size="lg" />
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No activity yet</span>
+                  )}
+                </div>
+
+                {summary && me && (
+                  <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Your bill</p>
+                      <p className="font-semibold tabular-nums">{formatCurrency(me.totalCharge)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">You paid</p>
+                      <p className="font-semibold tabular-nums">{formatCurrency(me.totalPaid)}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Meal rate</p>
+                      <p className="font-semibold tabular-nums">{formatRate(summary.totals.mealRate)}</p>
+                    </div>
+                  </div>
+                )}
+              </Link>
+            )
+          })}
+        </div>
+      )}
+
+      <CreateMessDialog open={createOpen} onOpenChange={setCreateOpen} />
     </div>
   )
 }

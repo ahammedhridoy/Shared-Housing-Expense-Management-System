@@ -1,271 +1,434 @@
 import { useState } from "react"
-import { useParams } from "react-router-dom"
-import { useQuery } from "@tanstack/react-query"
-import { useForm } from "react-hook-form"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { messApi } from "@/services"
-import { useAuth } from "@/hooks/useAuth"
-import { useExpenses, useCreateExpense, useUpdateExpense, useDeleteExpense } from "@/features/expenses/hooks/useExpenses"
-import { createExpenseSchema, type CreateExpenseFormData, updateExpenseSchema, type UpdateExpenseFormData } from "@/features/expenses/validations/expense.schema"
-import { Card, CardContent } from "@/components/ui/card"
+import { Pencil, Plus, Receipt, ShoppingBasket, Trash2, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Plus, Receipt, Trash2, Pencil } from "lucide-react"
-import { formatCurrency } from "@/lib/currency"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ClosedNotice, EmptyState, Field, MonthSwitcher, NativeSelect, PageHeader } from "@/components/common/ui-kit"
+import { ConfirmDialog } from "@/components/common/ConfirmDialog"
+import { toast } from "@/components/common/toast"
+import {
+  useDeleteExpense,
+  useMembers,
+  useMessContext,
+  useMonthExpenses,
+  useMonthSummary,
+  useSaveExpense,
+} from "@/features/mess/hooks/useMessData"
+import { formatCurrency, CURRENCY_SYMBOL } from "@/lib/currency"
+import { dayOf, daysInMonth, defaultDayFor, formatDay } from "@/lib/month"
+import { cn } from "@/lib/utils"
+import type { Expense, ExpenseCategory, ExpenseKind, MessMember } from "@/types/api"
 
-const categories = ["FOOD","RENT","ELECTRICITY","GAS","WATER","INTERNET","MAINTENANCE","MAID_COST","OTHER"]
+const HOUSE_CATEGORIES: { value: ExpenseCategory; label: string }[] = [
+  { value: "ELECTRICITY", label: "Electricity" },
+  { value: "GAS", label: "Gas" },
+  { value: "WATER", label: "Water" },
+  { value: "INTERNET", label: "Wifi / Internet" },
+  { value: "MAID", label: "Maid (bua)" },
+  { value: "SERVICE", label: "Service charge / repair" },
+  { value: "OTHER", label: "Other" },
+]
+const categoryLabel = (c: ExpenseCategory) =>
+  c === "BAZAR" ? "Bazar" : (HOUSE_CATEGORIES.find((x) => x.value === c)?.label ?? c)
 
-const catColors: Record<string, string> = {
-  FOOD: "bg-success/10 text-success", RENT: "bg-info/10 text-info",
-  ELECTRICITY: "bg-warning/10 text-warning", GAS: "bg-warning/10 text-warning",
-  WATER: "bg-info/10 text-info", INTERNET: "bg-primary/10 text-primary",
-  MAINTENANCE: "bg-danger/10 text-danger", MAID_COST: "bg-danger/10 text-danger",
-  OTHER: "bg-muted text-muted-foreground",
+const FUND = "__fund__"
+
+interface FormState {
+  kind: ExpenseKind
+  category: ExpenseCategory
+  title: string
+  amount: string
+  date: string
+  paidBy: string
+  custom: boolean
+  shares: Record<string, string>
 }
 
-const fmtDate = (d: string) => new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-
-interface ExpenseWithRecorder {
-  id: string; messId: string; recordedBy: string; title: string; description: string | null
-  amount: number; category: string; date: string; createdAt: string; updatedAt: string
-  recorder: { id: string; name: string; email: string }
-}
-
-export default function ExpensesPage() {
-  const { messId } = useParams<{ messId: string }>()
-  const { user } = useAuth()
-  const mid = messId!
-  const [open, setOpen] = useState(false)
-  const [editExpense, setEditExpense] = useState<ExpenseWithRecorder | null>(null)
-  const [editOpen, setEditOpen] = useState(false)
-  const [detailExpense, setDetailExpense] = useState<ExpenseWithRecorder | null>(null)
-  const [detailOpen, setDetailOpen] = useState(false)
-
-  const { data, isLoading } = useExpenses(mid)
-
-  const { data: membersData } = useQuery({
-    queryKey: ["mess-members", mid],
-    queryFn: () => messApi.getMembers(mid),
-    enabled: !!mid,
+function ExpenseDialog({
+  open,
+  onOpenChange,
+  editing,
+  initialKind,
+  members,
+  year,
+  month,
+  messId,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  editing: Expense | null
+  initialKind: ExpenseKind
+  members: MessMember[]
+  year: number
+  month: number
+  messId: string
+}) {
+  const save = useSaveExpense(messId)
+  const blank = (): FormState => ({
+    kind: initialKind,
+    category: initialKind === "MEAL" ? "BAZAR" : "INTERNET",
+    title: "",
+    amount: "",
+    date: defaultDayFor(year, month),
+    paidBy: initialKind === "MEAL" && members[0] ? members[0].user.id : FUND,
+    custom: false,
+    shares: {},
+  })
+  const fromExpense = (e: Expense): FormState => ({
+    kind: e.kind,
+    category: e.category,
+    title: e.title,
+    amount: String(e.amount),
+    date: e.date,
+    paidBy: e.paidById ?? FUND,
+    custom: e.shares.length > 0,
+    shares: Object.fromEntries(e.shares.map((s) => [s.userId, String(s.amount)])),
   })
 
-  const isManager = membersData?.members?.some((m) => m.user.id === user?.id && m.role === "MANAGER") ?? false
-
-  const create = useCreateExpense(mid)
-  const update = useUpdateExpense(mid)
-  const del = useDeleteExpense(mid)
-
-  const expenses: ExpenseWithRecorder[] = (data?.expenses as ExpenseWithRecorder[]) ?? []
-
-  // Create form
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors } } = useForm<CreateExpenseFormData>({
-    resolver: zodResolver(createExpenseSchema),
-    defaultValues: { title: "", description: "", amount: 0, category: "FOOD", date: new Date().toISOString().split("T")[0] },
-  })
-
-  // Edit form
-  const { register: rEdit, handleSubmit: hEdit, reset: resetEdit, setValue: setEditVal, watch: wEdit, formState: { errors: eErrors } } = useForm<UpdateExpenseFormData>({
-    resolver: zodResolver(updateExpenseSchema),
-  })
-
-  function openEdit(ex: ExpenseWithRecorder) {
-    setEditExpense(ex)
-    resetEdit({ title: ex.title, description: ex.description || "", amount: ex.amount, category: ex.category })
-    setEditOpen(true)
+  const [form, setForm] = useState<FormState>(blank)
+  const [error, setError] = useState("")
+  const [openedFor, setOpenedFor] = useState<string | null>(null)
+  const openKey = open ? (editing?.id ?? `new-${initialKind}`) : null
+  if (openKey !== openedFor) {
+    setOpenedFor(openKey)
+    if (open) {
+      setForm(editing ? fromExpense(editing) : blank())
+      setError("")
+    }
   }
 
-  function onCreateSubmit(data: CreateExpenseFormData) {
-    create.mutate({ title: data.title, description: data.description || undefined, amount: data.amount, category: data.category, date: data.date }, {
-      onSuccess: () => { reset(); setOpen(false) },
+  const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }))
+  const amount = Number(form.amount) || 0
+  const shareTotal = Object.values(form.shares).reduce((s, v) => s + (Number(v) || 0), 0)
+  const isHouse = form.kind === "HOUSE"
+
+  const splitEqually = () => {
+    const ids = members.map((m) => m.user.id)
+    const each = Math.floor((amount / ids.length) * 100) / 100
+    const shares: Record<string, string> = {}
+    ids.forEach((id, i) => {
+      shares[id] = String(i === ids.length - 1 ? Math.round((amount - each * (ids.length - 1)) * 100) / 100 : each)
     })
+    update({ shares })
   }
 
-  function onEditSubmit(data: UpdateExpenseFormData) {
-    if (!editExpense) return
-    update.mutate({ expenseId: editExpense.id, data: { title: data.title, description: data.description || undefined, amount: data.amount, category: data.category, date: editExpense.date } }, {
-      onSuccess: () => { resetEdit(); setEditExpense(null); setEditOpen(false) },
-    })
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setError("")
+    if (!form.title.trim()) return setError("Give it a short name, e.g. \"Weekly bazar\".")
+    if (!(amount > 0)) return setError("Enter an amount greater than 0.")
+    if (isHouse && form.custom && Math.abs(shareTotal - amount) > 0.01)
+      return setError(`Shares add up to ${formatCurrency(shareTotal)} but the bill is ${formatCurrency(amount)}.`)
+
+    save.mutate(
+      {
+        id: editing?.id,
+        data: {
+          kind: form.kind,
+          category: form.kind === "MEAL" ? "BAZAR" : form.category,
+          title: form.title.trim(),
+          amount,
+          date: form.date,
+          paidById: form.paidBy === FUND ? null : form.paidBy,
+          shares:
+            isHouse && form.custom
+              ? Object.entries(form.shares)
+                  .map(([userId, v]) => ({ userId, amount: Number(v) || 0 }))
+                  .filter((s) => s.amount > 0)
+              : [],
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success(editing ? "Expense updated" : "Expense added")
+          onOpenChange(false)
+        },
+        onError: (err) => setError(err.message),
+      }
+    )
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-foreground">Expenses</h1>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger render={<Button className="gap-2"><Plus className="h-4 w-4" />Add Expense</Button>} />
-          <DialogContent>
-            <DialogHeader><DialogTitle>Add Expense</DialogTitle></DialogHeader>
-            <form onSubmit={handleSubmit(onCreateSubmit)} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="exp-title">Title</Label>
-                <Input id="exp-title" {...register("title")} placeholder="e.g. Groceries" />
-                {errors.title && <p className="text-xs text-destructive">{errors.title.message}</p>}
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{editing ? "Edit expense" : isHouse ? "Add house bill" : "Add bazar"}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
+            {(["MEAL", "HOUSE"] as const).map((k) => (
+              <button
+                type="button"
+                key={k}
+                onClick={() => update({ kind: k, category: k === "MEAL" ? "BAZAR" : "INTERNET" })}
+                className={cn("rounded-md py-1.5 font-medium", form.kind === k ? "bg-card shadow-sm" : "text-muted-foreground")}
+              >
+                {k === "MEAL" ? "Bazar (meal cost)" : "House bill"}
+              </button>
+            ))}
+          </div>
+
+          {isHouse && (
+            <Field label="Bill type" htmlFor="exp-cat">
+              <NativeSelect id="exp-cat" value={form.category} onChange={(e) => update({ category: e.target.value as ExpenseCategory })}>
+                {HOUSE_CATEGORIES.map((c) => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </NativeSelect>
+            </Field>
+          )}
+
+          <Field label="Name" htmlFor="exp-title">
+            <Input id="exp-title" value={form.title} placeholder={isHouse ? "e.g. November wifi bill" : "e.g. Fish, rice, vegetables"} onChange={(e) => update({ title: e.target.value })} />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label={`Amount (${CURRENCY_SYMBOL})`} htmlFor="exp-amount">
+              <Input id="exp-amount" inputMode="decimal" value={form.amount} onChange={(e) => update({ amount: e.target.value })} placeholder="0" />
+            </Field>
+            <Field label="Date" htmlFor="exp-date">
+              <Input id="exp-date" type="date" value={form.date} min={dayOf(year, month, 1)} max={dayOf(year, month, daysInMonth(year, month))} onChange={(e) => update({ date: e.target.value })} />
+            </Field>
+          </div>
+
+          <Field
+            label="Who paid?"
+            htmlFor="exp-paid"
+            hint={form.paidBy === FUND ? "Paid by the manager from deposits." : "This amount is credited to that member."}
+          >
+            <NativeSelect id="exp-paid" value={form.paidBy} onChange={(e) => update({ paidBy: e.target.value })}>
+              {members.map((m) => (
+                <option key={m.user.id} value={m.user.id}>{m.user.name}</option>
+              ))}
+              <option value={FUND}>Mess fund (from deposits)</option>
+            </NativeSelect>
+          </Field>
+
+          {isHouse && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Split</p>
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1 text-sm">
+                <button type="button" onClick={() => update({ custom: false })} className={cn("rounded-md py-1.5 font-medium", !form.custom ? "bg-card shadow-sm" : "text-muted-foreground")}>
+                  Everyone equally
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    update({ custom: true })
+                    if (Object.keys(form.shares).length === 0) splitEqually()
+                  }}
+                  className={cn("rounded-md py-1.5 font-medium", form.custom ? "bg-card shadow-sm" : "text-muted-foreground")}
+                >
+                  Custom amounts
+                </button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="exp-desc">Description (optional)</Label>
-                <Input id="exp-desc" {...register("description")} placeholder="Optional" />
-                {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="exp-amt">Amount</Label>
-                  <Input id="exp-amt" type="number" min="1" {...register("amount", { valueAsNumber: true })} />
-                  {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
+              {form.custom ? (
+                <div className="space-y-2 rounded-lg border p-3">
+                  {members.map((m) => (
+                    <div key={m.user.id} className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm">{m.user.name}</span>
+                      <Input
+                        className="w-28 text-right"
+                        inputMode="decimal"
+                        value={form.shares[m.user.id] ?? ""}
+                        placeholder="0"
+                        onChange={(e) => update({ shares: { ...form.shares, [m.user.id]: e.target.value } })}
+                      />
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between border-t pt-2 text-xs">
+                    <button type="button" className="font-medium text-primary underline-offset-2 hover:underline" onClick={splitEqually}>
+                      Reset to equal
+                    </button>
+                    <span className={cn(Math.abs(shareTotal - amount) > 0.01 ? "text-danger" : "text-muted-foreground")}>
+                      {formatCurrency(shareTotal)} of {formatCurrency(amount)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Put 0 for anyone who shouldn't pay this bill.</p>
                 </div>
-                <div className="space-y-2">
-                  <Label>Category</Label>
-                  <Select value={watch("category")} onValueChange={(v) => v && setValue("category", v)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {categories.map((c) => <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                  {errors.category && <p className="text-xs text-destructive">{errors.category.message}</p>}
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="exp-date">Date</Label>
-                <Input id="exp-date" type="date" {...register("date")} />
-                {errors.date && <p className="text-xs text-destructive">{errors.date.message}</p>}
-              </div>
-              {create.isError && <p className="text-sm text-danger">Failed to add expense.</p>}
-              <Button type="submit" className="w-full" disabled={create.isPending}>{create.isPending ? "Adding..." : "Add Expense"}</Button>
-            </form>
-          </DialogContent>
-        </Dialog>
+              ) : (
+                members.length > 0 &&
+                amount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {formatCurrency(amount / members.length)} each for {members.length} members.
+                  </p>
+                )
+              )}
+            </div>
+          )}
+
+          {error && <p className="rounded-md bg-danger-light px-3 py-2 text-sm text-danger">{error}</p>}
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={save.isPending}>{save.isPending ? "Saving..." : "Save"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ExpenseList({
+  items,
+  editable,
+  onEdit,
+  onDelete,
+  members,
+}: {
+  items: Expense[]
+  editable: boolean
+  onEdit: (e: Expense) => void
+  onDelete: (e: Expense) => void
+  members: MessMember[]
+}) {
+  const nameOf = (id: string) => members.find((m) => m.user.id === id)?.user.name ?? "Former member"
+  return (
+    <ul className="divide-y">
+      {items.map((e) => (
+        <li key={e.id} className="flex items-start gap-3 px-4 py-3">
+          <div className="w-12 shrink-0 pt-0.5 text-xs text-muted-foreground">{formatDay(e.date)}</div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium">{e.title}</p>
+            <p className="text-xs text-muted-foreground">
+              {e.kind === "HOUSE" && <>{categoryLabel(e.category)} · </>}
+              {e.paidBy ? `Paid by ${e.paidBy.name}` : "From mess fund"}
+              {e.kind === "HOUSE" && (e.shares.length > 0 ? ` · custom split (${e.shares.map((s) => `${nameOf(s.userId)} ${formatCurrency(s.amount)}`).join(", ")})` : " · split equally")}
+            </p>
+          </div>
+          <div className="text-right font-semibold tabular-nums">{formatCurrency(e.amount)}</div>
+          {editable && (
+            <div className="flex shrink-0 gap-0.5">
+              <Button variant="ghost" size="icon-sm" onClick={() => onEdit(e)} aria-label="Edit">
+                <Pencil />
+              </Button>
+              <Button variant="ghost" size="icon-sm" onClick={() => onDelete(e)} aria-label="Delete">
+                <Trash2 className="text-danger" />
+              </Button>
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+export default function ExpensesPage() {
+  const { messId, year, month, isManager } = useMessContext()
+  const { data: expenses, isLoading } = useMonthExpenses(messId, year, month)
+  const { data: members = [] } = useMembers(messId)
+  const { data: summary } = useMonthSummary(messId, year, month)
+  const remove = useDeleteExpense(messId)
+
+  const [tab, setTab] = useState<ExpenseKind>("MEAL")
+  const [dialog, setDialog] = useState<{ open: boolean; editing: Expense | null }>({ open: false, editing: null })
+  const [deleting, setDeleting] = useState<Expense | null>(null)
+
+  const closed = summary?.status === "CLOSED"
+  const editable = isManager && !closed
+  const list = (expenses ?? []).filter((e) => e.kind === tab)
+  const total = (kind: ExpenseKind) => (expenses ?? []).filter((e) => e.kind === kind).reduce((s, e) => s + e.amount, 0)
+
+  return (
+    <>
+      <PageHeader
+        title="Bazar & bills"
+        description="Bazar sets the meal rate. House bills are shared separately."
+        actions={
+          <>
+            <MonthSwitcher closed={closed} />
+            {editable && (
+              <Button onClick={() => setDialog({ open: true, editing: null })}>
+                <Plus /> Add {tab === "MEAL" ? "bazar" : "bill"}
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      {closed && <ClosedNotice isManager={isManager} />}
+
+      <div className="grid grid-cols-2 gap-3">
+        {(["MEAL", "HOUSE"] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={cn(
+              "rounded-xl border bg-card p-4 text-left transition-shadow",
+              tab === k ? "ring-2 ring-primary" : "hover:shadow-sm"
+            )}
+          >
+            <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              {k === "MEAL" ? <ShoppingBasket className="size-4 text-amber-600" /> : <Zap className="size-4 text-sky-600" />}
+              {k === "MEAL" ? "Bazar (meal cost)" : "House bills"}
+            </span>
+            <span className="mt-1 block text-xl font-semibold tabular-nums">
+              {isLoading ? <Skeleton className="h-7 w-20" /> : formatCurrency(total(k))}
+            </span>
+          </button>
+        ))}
       </div>
 
-      <Card>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="divide-y">{[1, 2, 3].map((i) => (
-              <div key={i} className="flex items-center gap-4 p-4">
-                <Skeleton className="h-10 w-10 rounded-lg" />
-                <div className="flex-1 space-y-1"><Skeleton className="h-4 w-32" /><Skeleton className="h-3 w-48" /></div>
-                <Skeleton className="h-4 w-20" />
-              </div>
-            ))}</div>
-          ) : expenses.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Receipt className="h-10 w-10 text-muted-foreground mb-3" />
-              <p className="text-sm font-medium text-foreground">No expenses recorded</p>
-              <p className="text-xs text-muted-foreground mt-1">Add your first expense to get started</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {expenses.map((ex) => (
-                <button
-                  key={ex.id}
-                  onClick={() => { setDetailExpense(ex); setDetailOpen(true) }}
-                  className="flex w-full items-center gap-4 p-4 text-left hover:bg-muted/50 transition-colors"
-                >
-                  <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${catColors[ex.category] ?? "bg-muted"}`}>
-                    <Receipt className="h-5 w-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{ex.title}</p>
-                    <p className="text-xs text-muted-foreground">{ex.recorder.name} &middot; {fmtDate(ex.date)}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-semibold text-foreground">{formatCurrency(ex.amount)}</span>
-                    {isManager && (
-                      <button onClick={(e) => { e.stopPropagation(); openEdit(ex) }} className="rounded-md p-1 text-muted-foreground hover:text-foreground transition-colors" title="Edit">
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    )}
-                    {isManager && (
-                      <button onClick={(e) => { e.stopPropagation(); del.mutate(ex.id) }} className="rounded-md p-1 text-muted-foreground hover:text-danger transition-colors" title="Delete">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="rounded-xl border bg-card">
+        {isLoading ? (
+          <div className="space-y-2 p-4">
+            {[0, 1, 2].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
+        ) : list.length === 0 ? (
+          <div className="p-4">
+            <EmptyState
+              icon={Receipt}
+              title={tab === "MEAL" ? "No bazar yet this month" : "No house bills yet this month"}
+              description={tab === "MEAL" ? "Add each bazar with who paid for it." : "Add wifi, electricity, gas, water, maid and other shared bills."}
+              action={editable && (
+                <Button onClick={() => setDialog({ open: true, editing: null })}>
+                  <Plus /> Add {tab === "MEAL" ? "bazar" : "bill"}
+                </Button>
+              )}
+            />
+          </div>
+        ) : (
+          <ExpenseList
+            items={list}
+            members={members}
+            editable={editable}
+            onEdit={(e) => setDialog({ open: true, editing: e })}
+            onDelete={setDeleting}
+          />
+        )}
+      </div>
 
-      {/* Expense Detail Dialog */}
-      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Expense Details</DialogTitle></DialogHeader>
-          {detailExpense && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-muted-foreground">Title</p>
-                  <p className="text-sm font-medium text-foreground">{detailExpense.title}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Amount</p>
-                  <p className="text-sm font-medium text-foreground">{formatCurrency(detailExpense.amount)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Category</p>
-                  <p className="text-sm font-medium text-foreground">{detailExpense.category.replace("_", " ")}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Date</p>
-                  <p className="text-sm font-medium text-foreground">{fmtDate(detailExpense.date)}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Recorded by</p>
-                  <p className="text-sm font-medium text-foreground">{detailExpense.recorder.name}</p>
-                </div>
-                {detailExpense.description && (
-                  <div className="col-span-2">
-                    <p className="text-xs text-muted-foreground">Description</p>
-                    <p className="text-sm text-foreground">{detailExpense.description}</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ExpenseDialog
+        open={dialog.open}
+        onOpenChange={(o) => setDialog((d) => ({ ...d, open: o }))}
+        editing={dialog.editing}
+        initialKind={tab}
+        members={members}
+        year={year}
+        month={month}
+        messId={messId}
+      />
 
-      {/* Edit Expense Dialog */}
-      <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Edit Expense</DialogTitle></DialogHeader>
-          <form onSubmit={hEdit(onEditSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-exp-title">Title</Label>
-              <Input id="edit-exp-title" {...rEdit("title")} />
-              {eErrors.title && <p className="text-xs text-destructive">{eErrors.title.message}</p>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-exp-desc">Description</Label>
-              <Input id="edit-exp-desc" {...rEdit("description")} />
-              {eErrors.description && <p className="text-xs text-destructive">{eErrors.description.message}</p>}
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-exp-amt">Amount</Label>
-                <Input id="edit-exp-amt" type="number" min="1" {...rEdit("amount", { valueAsNumber: true })} />
-                {eErrors.amount && <p className="text-xs text-destructive">{eErrors.amount.message}</p>}
-              </div>
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={wEdit("category")} onValueChange={(v) => v && setEditVal("category", v)}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {categories.map((c) => <SelectItem key={c} value={c}>{c.replace("_", " ")}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                {eErrors.category && <p className="text-xs text-destructive">{eErrors.category.message}</p>}
-              </div>
-            </div>
-            {update.isError && <p className="text-sm text-danger">Failed to update expense.</p>}
-            <Button type="submit" className="w-full" disabled={update.isPending}>{update.isPending ? "Updating..." : "Update Expense"}</Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </div>
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(o) => !o && setDeleting(null)}
+        title="Delete this expense?"
+        description={deleting && `${deleting.title} — ${formatCurrency(deleting.amount)}. Everyone's account will be recalculated.`}
+        confirmLabel="Delete"
+        destructive
+        loading={remove.isPending}
+        onConfirm={() =>
+          deleting &&
+          remove.mutate(deleting.id, {
+            onSuccess: () => {
+              toast.success("Expense deleted")
+              setDeleting(null)
+            },
+            onError: (e) => toast.error(e.message),
+          })
+        }
+      />
+    </>
   )
 }
