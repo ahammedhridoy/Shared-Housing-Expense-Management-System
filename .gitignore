@@ -5,3 +5,8 @@ node_modules/
 coverage/
 dist/
 /generated/prisma
+
+# local tooling
+graphify-out/
+.claude/
+CLAUDE.md
